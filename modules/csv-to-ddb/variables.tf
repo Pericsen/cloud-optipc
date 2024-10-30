@@ -7,7 +7,7 @@ variable "region" {
 variable "table_name" {
   description = "Nombre de la tabla DynamoDB"
   type        = string
-  default = "componentes"
+  default = "componentes-nic"
 }
 
 variable "hash_key" {
@@ -19,7 +19,7 @@ variable "hash_key" {
 variable "csv_file" {
   description = "Ruta local del archivo CSV a cargar"
   type        = string
-  default = "./componentes.csv"
+  default = "C:/CLOUD/cloud-optipc/modules/csv-to-ddb/componentes_final.csv"
 }
 
 variable "lambda_timeout" {

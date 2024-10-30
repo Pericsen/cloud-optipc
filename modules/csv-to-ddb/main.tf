@@ -40,10 +40,10 @@ resource "aws_dynamodb_table" "csv_data_table" {
 }
 
 resource "aws_s3_bucket" "csv_bucket" {
-  bucket = "optipc-csv-storage-nic"
+  bucket = "optipc-csv-storage-nicc"
 
   tags = {
-    Name = "optipc-csv-storage-nic"
+    Name = "optipc-csv-storage-nicc"
     Environment = "dev"
   }
 }
@@ -65,7 +65,7 @@ resource "aws_s3_object" "csv_file" {
 
 # Lambda para cargar el CSV a DynamoDB usando LabRole
 resource "aws_lambda_function" "upload_csv_lambda" {
-  filename         = "${path.module}/lambda.zip"
+  filename         = "${path.module}/lambda-data.zip"
   function_name    = "${var.table_name}_upload_csv"
   role             = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
   handler          = "lambda_function.lambda_handler"
@@ -73,9 +73,9 @@ resource "aws_lambda_function" "upload_csv_lambda" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE = aws_dynamodb_table.my_table.name
+      DYNAMODB_TABLE = var.table_name
       S3_BUCKET      = aws_s3_bucket.csv_bucket.bucket
-      S3_KEY         = aws_s3_bucket_object.csv_object.key
+      S3_KEY = aws_s3_object.csv_file.key
     }
   }
 

@@ -1,6 +1,6 @@
 output "dynamodb_table_name" {
   description = "Nombre de la tabla DynamoDB creada"
-  value       = aws_dynamodb_table.my_table.name
+  value       = aws_dynamodb_table.csv_data_table.name
 }
 
 output "s3_bucket_name" {
