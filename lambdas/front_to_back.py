@@ -8,21 +8,27 @@ def lambda_handler(event, context):
     try:
         # Extraer los datos desde el evento
         body = json.loads(event['body'])
-        budget = body['budget']
-        components = body['components']
+        budget = body.get('budget')
+        components = body.get('components')
+        
+        # Verificar que budget y components no sean None
+        if budget is None or components is None:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'message': 'Faltan parámetros en la solicitud'})
+            }
         
         # La IP privada de la EC2 donde se ejecuta el modelo de optimización
         ec2_private_ip = os.environ['EC2_ENDPOINT']
+        ec2_url = f"http://{ec2_private_ip}/process"  # URL completa con endpoint '/process'
         headers = {'Content-Type': 'application/json'}
         
         dynamodb = boto3.resource('dynamodb')
         components_table = dynamodb.Table('componentes')
         
+        # Escaneo de DynamoDB para obtener los componentes
         response = components_table.scan()
-        if 'Items' in response:
-            components_data = response['Items']
-        else:
-            components_data = []
+        components_data = response.get('Items', [])
         
         # Enviar los datos a la EC2
         payload = {
@@ -31,10 +37,10 @@ def lambda_handler(event, context):
             'components-data': components_data
         }
         
-        response = requests.post(ec2_private_ip, json=payload, headers=headers)
+        ec2_response = requests.post(ec2_url, json=payload, headers=headers)
         
-        if response.status_code == 200:
-            optimized_data = response.json()
+        if ec2_response.status_code == 200:
+            optimized_data = ec2_response.json()
             
             query_datetime = datetime.now(timezone.utc).isoformat()
             
@@ -63,13 +69,13 @@ def lambda_handler(event, context):
             }
         else:
             return {
-                'statusCode': response.status_code,
+                'statusCode': ec2_response.status_code,
                 'headers': {
                     'Access-Control-Allow-Origin': '*',
                     'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent',
                     'Access-Control-Allow-Methods': 'OPTIONS,POST'
                 },
-                'body': json.dumps({'message': 'Error al procesar en la EC2'})
+                'body': json.dumps({'message': 'Error al procesar en la EC2', 'details': ec2_response.text})
             }
         
     except Exception as e:
