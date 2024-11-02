@@ -1,6 +1,6 @@
 provider "aws" {
-    shared_config_files = ["/Users/peric/.aws/config"] # Path to your AWS config file
-    shared_credentials_files = ["/Users/peric/.aws/credentials"] # Path to your AWS credentials file
+    shared_config_files = [".aws/config", "~/.aws/config"]
+    shared_credentials_files = [".aws/credentials", "~/.aws/credentials"]
     region  = "us-east-1"
     profile = "default"
 }

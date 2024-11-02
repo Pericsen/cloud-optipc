@@ -7,3 +7,8 @@ variable "bucket_name" {
   type = string
   description = "Nombre del Bucket del Front"
 }
+
+variable "csv_bucket_name" {
+  type = string
+  description = "Nombre del Bucket del CSV"
+}

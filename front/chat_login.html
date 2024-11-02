@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OptiPC - Optimización de Componentes</title>
+  <link rel="stylesheet" href="chat.css">
+
+  <script src="https://sdk.amazonaws.com/js/aws-sdk-2.931.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/amazon-cognito-identity-js/4.5.10/amazon-cognito-identity.min.js"></script>
+</head>
+<body>
+  <!-- Navigation Bar -->
+  <nav>
+    <div class="nav-logo">OptiPC</div>
+    <div id="profile" class="profile">
+      <img id="profile-pic" src="" alt="Profile Picture">
+      <span id="username"></span>
+    </div>
+    <div id="profile-popup" class="profile-popup" style="display: none;">
+      <p id="popup-username"></p>
+      <p id="popup-email"></p>
+      <button id="logout-btn">Cerrar Sesión</button>
+    </div>
+  </nav>
+
+  <!-- Main Section -->
+  <section class="main-section">
+    <!-- Left text description -->
+    <div class="description">
+      <h1>Optimiza tu PC con los mejores componentes ajustados a tu presupuesto</h1>
+      <p>¡Solo ingresa tu presupuesto y selecciona los componentes prioritarios que deseas!</p>
+    </div>
+
+    <!-- Right form section -->
+    <div class="optimization-form">
+      <input type="number" id="budget" placeholder="Ingresa tu presupuesto" class="input-budget">
+      
+      <!-- Dynamic component selector -->
+      <div id="priority-components">
+        <select class="component-selector">
+          <option>Agregar Prioridad</option>
+          <option value="cpu">CPU</option>
+          <option value="gpu">GPU</option>
+          <option value="ram">RAM</option>
+          <option value="storage">Almacenamiento</option>
+        </select>
+      </div>
+
+      <button id="optimize-btn">Optimizar</button>
+    </div>
+  </section>
+
+  <!-- Results Section -->
+  <section id="results" class="results-section">
+    <!-- Optimized components list will be generated here -->
+  </section>
+
+  <script src="https://sdk.amazonaws.com/js/aws-sdk-2.931.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@4.6.0/dist/amazon-cognito-identity.min.js"></script>
+  <script src="chat.js"></script>
+</body>
+</html>
