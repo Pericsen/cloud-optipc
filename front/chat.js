@@ -27,18 +27,19 @@ function loadConfig() {
 
 function init() {
 
-  AWS.config.region = 'us-east-1'; // Tu región
+  AWS.config.region = 'us-east-1';
   AWS.config.credentials = new AWS.CognitoIdentityCredentials({
-      IdentityPoolId: identity_pool_id // Reemplaza con tu ID de Pool de Identidad
+      IdentityPoolId: identity_pool_id
   });
 
   // Inicializa el usuario
   var poolData = {
-      UserPoolId: user_pool_id, // Reemplaza con tu ID de Pool de Usuario
-      ClientId: user_pool_client_id // Reemplaza con tu ID de Cliente de Pool
+      UserPoolId: user_pool_id,
+      ClientId: user_pool_client_id
   };
   var userPool = new AmazonCognitoIdentity.CognitoUserPool(poolData);
 
+  console.log(api_gateway_id);
   console.log(user_pool_id);
   console.log(user_pool_client_id);
   console.log(poolData);
@@ -63,7 +64,7 @@ function init() {
                 console.error(err);
                 return;
             }
-            console.log("Sesión obtenida con éxito:", session); // Añade este log
+            console.log("Sesión obtenida con éxito:", session);
 
             // Obtiene los atributos del usuario
             cognitoUser.getUserAttributes((err, attributes) => {
@@ -189,10 +190,10 @@ function init() {
       const reader = new FileReader();
       reader.onload = async function(event) {
           const csvData = event.target.result;
-
+        
           try {
-            //   const response = await fetch(`https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/upload`, {
-                const response = await fetch(`https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod`, {
+              const response = await fetch(`https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/upload`, {
+                // const response = await fetch(`https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod`, {
                   method: 'POST',
                   headers: {
                       'Content-Type': 'application/json'

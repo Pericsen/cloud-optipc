@@ -141,44 +141,91 @@ output "lambda_url" {
   value = aws_lambda_function.https_lambda.invoke_arn
 }
 
-resource "aws_api_gateway_rest_api" "api_gateway" {
-  name        = "api-gateway"
-  description = "API Gateway for Lambdas redirection"
+# resource "aws_api_gateway_rest_api" "api_gateway" {
+#   name        = "api-gateway"
+#   description = "API Gateway for Lambdas redirection"
+# }
+
+resource "aws_apigatewayv2_api" "http_api" {
+  name          = "http-api-gateway"
+  description   = "HTTP API Gateway for Lambdas redirection"
+  protocol_type = "HTTP"
+
+  cors_configuration {
+    allow_credentials = false
+    allow_methods     = ["GET", "POST", "OPTIONS", "PUT", "DELETE"]
+    allow_origins     = ["*"]
+    allow_headers     = ["Content-Type", "Authorization"]
+    expose_headers    = ["Content-Type", "Authorization"]
+    max_age           = 3600
+  }
 }
 
-/// HTTPS LAMBDA
-resource "aws_api_gateway_resource" "https_lambda_resource" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
-  path_part   = "redirect"
+output "http_api_id" {
+  value = aws_apigatewayv2_api.http_api.id
 }
 
-resource "aws_api_gateway_method" "https_lambda_method" {
-  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
-  resource_id   = aws_api_gateway_resource.https_lambda_resource.id
-  http_method   = "GET"
-  authorization = "NONE"
+resource "aws_apigatewayv2_stage" "default_stage" {
+  api_id = aws_apigatewayv2_api.http_api.id
+  name   = "prod"
+  auto_deploy = true
 }
 
-resource "aws_api_gateway_integration" "https_lambda_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
-  resource_id             = aws_api_gateway_resource.https_lambda_resource.id
-  http_method             = aws_api_gateway_method.https_lambda_method.http_method
-  type                    = "AWS_PROXY"
-  integration_http_method = "POST"
-  uri                     = aws_lambda_function.https_lambda.invoke_arn
+
+# /// HTTPS LAMBDA
+# resource "aws_api_gateway_resource" "https_lambda_resource" {
+#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+#   parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
+#   path_part   = "redirect"
+# }
+
+# resource "aws_api_gateway_method" "https_lambda_method" {
+#   rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
+#   resource_id   = aws_api_gateway_resource.https_lambda_resource.id
+#   http_method   = "GET"
+#   authorization = "NONE"
+# }
+
+# resource "aws_api_gateway_integration" "https_lambda_integration" {
+#   rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
+#   resource_id             = aws_api_gateway_resource.https_lambda_resource.id
+#   http_method             = aws_api_gateway_method.https_lambda_method.http_method
+#   type                    = "AWS_PROXY"
+#   integration_http_method = "POST"
+#   uri                     = aws_lambda_function.https_lambda.invoke_arn
+# }
+
+# resource "aws_lambda_permission" "api_gateway_invoke" {
+#   statement_id  = "AllowAPIGatewayInvoke"
+#   action        = "lambda:InvokeFunction"
+#   function_name = aws_lambda_function.https_lambda.function_name
+#   principal     = "apigateway.amazonaws.com"
+#   source_arn    = "${aws_api_gateway_rest_api.api_gateway.execution_arn}/*/*"
+# }
+
+resource "aws_apigatewayv2_integration" "https_lambda_integration" {
+  api_id                 = aws_apigatewayv2_api.http_api.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.https_lambda.invoke_arn
+  payload_format_version = "2.0"
 }
 
-resource "aws_lambda_permission" "api_gateway_invoke" {
-  statement_id  = "AllowAPIGatewayInvoke"
+resource "aws_apigatewayv2_route" "https_redirect_route" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "GET /redirect"
+  target    = "integrations/${aws_apigatewayv2_integration.https_lambda_integration.id}"
+}
+
+resource "aws_lambda_permission" "https_lambda_permission" {
+  statement_id  = "AllowHttpApiInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.https_lambda.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.api_gateway.execution_arn}/*/*"
+  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*"
 }
 
 
-/// LAMBDA PARA SUBIR DATA DE CSV A DYNAMO
+# /// LAMBDA PARA SUBIR DATA DE CSV A DYNAMO
 # resource "aws_api_gateway_resource" "upload_lambda_resource" {
 #   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
 #   parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
@@ -294,100 +341,166 @@ resource "aws_lambda_permission" "api_gateway_invoke" {
 #   source_arn = "${aws_api_gateway_rest_api.api_gateway.execution_arn}/*/*"
 # }
 
+resource "aws_apigatewayv2_integration" "upload_lambda_integration" {
+  api_id                  = aws_apigatewayv2_api.http_api.id
+  integration_type        = "AWS_PROXY"
+  integration_uri         = aws_lambda_function.csv_to_dynamodb.invoke_arn
+  payload_format_version  = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "upload_route" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "POST /upload"
+  target    = "integrations/${aws_apigatewayv2_integration.upload_lambda_integration.id}"
+}
+
+resource "aws_apigatewayv2_route" "cors_options_route" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "OPTIONS /upload"
+  target    = "integrations/${aws_apigatewayv2_integration.upload_lambda_integration.id}"
+}
+
+resource "aws_lambda_permission" "csv_to_dynamodb_lambda_permission" {
+  statement_id  = "AllowHttpApiInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.csv_to_dynamodb.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*"
+}
+
+
 /// FRONT TO BACK LAMBDA
-resource "aws_api_gateway_resource" "send_resource" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
-  path_part   = "send"
-}
+# resource "aws_api_gateway_resource" "send_resource" {
+#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+#   parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
+#   path_part   = "send"
+# }
 
-resource "aws_api_gateway_method" "post_send" {
-  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
-  resource_id   = aws_api_gateway_resource.send_resource.id
-  http_method   = "POST"
-  authorization = "NONE"
-}
+# resource "aws_api_gateway_method" "post_send" {
+#   rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
+#   resource_id   = aws_api_gateway_resource.send_resource.id
+#   http_method   = "POST"
+#   authorization = "NONE"
+# }
 
-resource "aws_api_gateway_method" "cors_options_send" {
-  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
-  resource_id   = aws_api_gateway_resource.send_resource.id
-  http_method   = "OPTIONS"
-  authorization = "NONE"
-}
+# resource "aws_api_gateway_method" "cors_options_send" {
+#   rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
+#   resource_id   = aws_api_gateway_resource.send_resource.id
+#   http_method   = "OPTIONS"
+#   authorization = "NONE"
+# }
 
-resource "aws_api_gateway_integration" "send_integration" {
+# resource "aws_api_gateway_integration" "send_integration" {
+#   for_each = {
+#     "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
+#     "us-east-1b" = element(module.vpc.private_subnets, 1)
+#   }
+
+#   rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
+#   resource_id             = aws_api_gateway_resource.send_resource.id
+#   http_method             = aws_api_gateway_method.post_send.http_method
+#   integration_http_method = "POST"
+#   type                    = "AWS_PROXY"
+#   uri                     = aws_lambda_function.send_to_ec2[each.key].invoke_arn
+
+#   depends_on = [aws_lambda_permission.send_permission]
+# }
+
+# resource "aws_api_gateway_integration" "cors_integration_send" {
+#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+#   resource_id = aws_api_gateway_resource.send_resource.id
+#   http_method = aws_api_gateway_method.cors_options_send.http_method
+#   type        = "MOCK"
+
+#   request_templates = {
+#     "application/json" = "{\"statusCode\": 200}"
+#   }
+# }
+
+# resource "aws_api_gateway_method_response" "cors_method_response_send" {
+#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+#   resource_id = aws_api_gateway_resource.send_resource.id
+#   http_method = aws_api_gateway_method.cors_options_send.http_method
+#   status_code = "200"
+
+#   response_models = {
+#     "application/json" = "Empty"
+#   }
+
+#   response_parameters = {
+#     "method.response.header.Access-Control-Allow-Headers" = true
+#     "method.response.header.Access-Control-Allow-Methods" = true
+#     "method.response.header.Access-Control-Allow-Origin"  = true
+#   }
+# }
+
+# resource "aws_api_gateway_integration_response" "cors_integration_response_send" {
+#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+#   resource_id = aws_api_gateway_resource.send_resource.id
+#   http_method = aws_api_gateway_method.cors_options_send.http_method
+#   status_code = "200"
+
+#   response_parameters = {
+#     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
+#     "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+#     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+#   }
+
+#   depends_on = [
+#     aws_api_gateway_integration.cors_integration_send,
+#     aws_api_gateway_method.cors_options_send
+#   ]
+# }
+
+# resource "aws_lambda_permission" "send_permission" {
+#   for_each = {
+#     "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
+#     "us-east-1b" = element(module.vpc.private_subnets, 1)
+#   }
+
+#   statement_id  = "AllowSendInvocation"
+#   action        = "lambda:InvokeFunction"
+#   function_name = aws_lambda_function.send_to_ec2[each.key].function_name
+#   principal     = "apigateway.amazonaws.com"
+# }
+
+resource "aws_apigatewayv2_integration" "send_lambda_integration" {
   for_each = {
     "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
     "us-east-1b" = element(module.vpc.private_subnets, 1)
   }
 
-  rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
-  resource_id             = aws_api_gateway_resource.send_resource.id
-  http_method             = aws_api_gateway_method.post_send.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.send_to_ec2[each.key].invoke_arn
-
-  depends_on = [aws_lambda_permission.send_permission]
+  api_id           = aws_apigatewayv2_api.http_api.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.send_to_ec2[each.key].invoke_arn
+  payload_format_version = "2.0"
 }
 
-resource "aws_api_gateway_integration" "cors_integration_send" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  resource_id = aws_api_gateway_resource.send_resource.id
-  http_method = aws_api_gateway_method.cors_options_send.http_method
-  type        = "MOCK"
-
-  request_templates = {
-    "application/json" = "{\"statusCode\": 200}"
-  }
-}
-
-resource "aws_api_gateway_method_response" "cors_method_response_send" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  resource_id = aws_api_gateway_resource.send_resource.id
-  http_method = aws_api_gateway_method.cors_options_send.http_method
-  status_code = "200"
-
-  response_models = {
-    "application/json" = "Empty"
-  }
-
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-    "method.response.header.Access-Control-Allow-Origin"  = true
-  }
-}
-
-resource "aws_api_gateway_integration_response" "cors_integration_response_send" {
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  resource_id = aws_api_gateway_resource.send_resource.id
-  http_method = aws_api_gateway_method.cors_options_send.http_method
-  status_code = "200"
-
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-  }
-
-  depends_on = [
-    aws_api_gateway_integration.cors_integration_send,
-    aws_api_gateway_method.cors_options_send
-  ]
-}
-
-resource "aws_lambda_permission" "send_permission" {
+resource "aws_apigatewayv2_route" "send_route" {
   for_each = {
     "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
     "us-east-1b" = element(module.vpc.private_subnets, 1)
   }
 
-  statement_id  = "AllowSendInvocation"
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "POST /send"
+  target    = "integrations/${aws_apigatewayv2_integration.send_lambda_integration[each.key].id}"
+}
+
+resource "aws_lambda_permission" "send_to_ec2_lambda_permission" {
+  for_each = {
+    "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
+    "us-east-1b" = element(module.vpc.private_subnets, 1)
+  }
+
+  statement_id  = "AllowHttpApiInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.send_to_ec2[each.key].function_name
   principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*"
 }
+
+
 
 /// MODELO DE OPTIMIZACIÓN EN EC2
 # resource "aws_api_gateway_resource" "optimize_resource" {
@@ -473,28 +586,28 @@ resource "aws_lambda_permission" "send_permission" {
 # }
 
 /// GENERAL
-resource "aws_api_gateway_deployment" "api_gateway_deployment" {
-  depends_on = [
-    aws_api_gateway_method.https_lambda_method,
-    aws_api_gateway_integration.https_lambda_integration,
-    # aws_api_gateway_integration.upload_lambda_integration,
-    # aws_api_gateway_integration.cors_integration_upload,
-    # aws_api_gateway_integration_response.cors_integration_response_upload,
-    aws_api_gateway_integration.send_integration,
-    aws_api_gateway_integration.cors_integration_send,
-    aws_api_gateway_integration_response.cors_integration_response_send,
-    # aws_api_gateway_integration.optimize_integration,
-    # aws_api_gateway_integration_response.options_integration_response
-  ]
+# resource "aws_api_gateway_deployment" "api_gateway_deployment" {
+#   depends_on = [
+#     aws_api_gateway_method.https_lambda_method,
+#     aws_api_gateway_integration.https_lambda_integration,
+#     aws_api_gateway_integration.upload_lambda_integration,
+#     aws_api_gateway_integration.cors_integration_upload,
+#     aws_api_gateway_integration_response.cors_integration_response_upload,
+#     aws_api_gateway_integration.send_integration,
+#     aws_api_gateway_integration.cors_integration_send,
+#     aws_api_gateway_integration_response.cors_integration_response_send,
+#     # aws_api_gateway_integration.optimize_integration,
+#     # aws_api_gateway_integration_response.options_integration_response
+#   ]
 
-  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-  stage_name  = "prod"
-}
+#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+#   stage_name  = "prod"
+# }
 
-output "api_gateway_url" {
-  value       = aws_api_gateway_deployment.api_gateway_deployment.invoke_url
-  description = "Base URL for the OptiPC API Gateway"
-}
+# output "api_gateway_url" {
+#   value       = aws_api_gateway_deployment.api_gateway_deployment.invoke_url
+#   description = "Base URL for the OptiPC API Gateway"
+# }
 
 
    ####################################
@@ -586,8 +699,10 @@ resource "aws_cognito_user_pool_client" "user_pool_client" {
     "ALLOW_CUSTOM_AUTH",
     "ALLOW_ADMIN_USER_PASSWORD_AUTH",
   ]
-  callback_urls = ["https://${aws_api_gateway_rest_api.api_gateway.id}.execute-api.us-east-1.amazonaws.com/prod/redirect"]
-  logout_urls   = ["https://${aws_api_gateway_rest_api.api_gateway.id}.execute-api.us-east-1.amazonaws.com/prod/redirect"]
+  # callback_urls = ["https://${aws_api_gateway_rest_api.api_gateway.id}.execute-api.us-east-1.amazonaws.com/prod/redirect"]
+  # logout_urls   = ["https://${aws_api_gateway_rest_api.api_gateway.id}.execute-api.us-east-1.amazonaws.com/prod/redirect"]
+  callback_urls = ["https://${aws_apigatewayv2_api.http_api.id}.execute-api.us-east-1.amazonaws.com/prod/redirect"]
+  logout_urls   = ["https://${aws_apigatewayv2_api.http_api.id}.execute-api.us-east-1.amazonaws.com/prod/redirect"]
 
   allowed_oauth_flows_user_pool_client = true
 }
@@ -596,9 +711,9 @@ output "user_pool_client_id" { # muestra el clientId para el pool de cognito (ne
   value = aws_cognito_user_pool_client.user_pool_client.id
 }
 
-output "api_gateway_id" {
-  value = aws_api_gateway_rest_api.api_gateway.id
-}
+# output "api_gateway_id" {
+#   value = aws_api_gateway_rest_api.api_gateway.id
+# }
 
 resource "aws_cognito_user_group" "admin_group" {
   user_pool_id = aws_cognito_user_pool.user_pool.id
@@ -1035,7 +1150,8 @@ resource "local_file" "config_file" {
     user_pool_client_id   = aws_cognito_user_pool_client.user_pool_client.id
     identity_pool_id      = aws_cognito_identity_pool.identity_pool.id
     role                  = data.aws_iam_role.labrole.arn
-    api_gateway_id        = aws_api_gateway_rest_api.api_gateway.id
+    # api_gateway_id        = aws_api_gateway_rest_api.api_gateway.id
+    api_gateway_id        = aws_apigatewayv2_api.http_api.id
     user_pool_id          = aws_cognito_user_pool.user_pool.id
   })
 }
