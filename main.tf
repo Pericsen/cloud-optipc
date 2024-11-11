@@ -63,9 +63,8 @@ resource "aws_lambda_function" "https_lambda" {
       USER_POOL_ID = aws_cognito_user_pool.user_pool.id,
       REDIRECT_ADMIN_URL        = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/admin_login.html",
       REDIRECT_USER_URL        = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/login.html",
-      LOGOUT_REDIRECT_URL = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/index.html"
-      CLIENT_ID = aws_cognito_user_pool_client.user_pool_client.id
-    }
+      LOGOUT_REDIRECT_URL = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/index.html",
+      CLIENT_ID = aws_cognito_user_pool_client.user_pool_client.id    }
   }
 }
 

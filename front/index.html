@@ -1,56 +1,48 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OptiPC - Optimización de Componentes</title>
-  <link rel="stylesheet" href="styles.css">
-
-  <script src="https://sdk.amazonaws.com/js/aws-sdk-2.931.0.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/amazon-cognito-identity-js/4.5.10/amazon-cognito-identity.min.js"></script>
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptiPC Selection</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- Navigation Bar -->
-  <nav>
-    <div class="nav-logo">OptiPC</div>
-    <button id="login-btn">Iniciar Sesión</button>
-  </nav>
+    <header>
+        <h1>OptiPC Component Selector</h1>
+        <button id="login-btn" class="login-button">Login</button>
+    </header>
 
-  <!-- Main Section -->
-  <section class="main-section">
-    <!-- Left text description -->
-    <div class="description">
-      <h1>Optimiza tu PC con los mejores componentes ajustados a tu presupuesto</h1>
-      <p>¡Solo ingresa tu presupuesto y selecciona los componentes prioritarios que deseas!</p>
-    </div>
+    <main>
+        <form id="selectionForm">
+            <label for="budget">Enter Your Budget:</label>
+            <input type="number" id="budget" name="budget" placeholder="e.g. 100000" required>
 
-    <!-- Right form section -->
-    <div class="optimization-form">
-      <input type="number" id="budget" placeholder="Ingresa tu presupuesto" class="input-budget">
-      
-      <!-- Dynamic component selector -->
-      <div id="priority-components">
-        <select class="component-selector">
-          <option>Agregar Prioridad</option>
-          <option value="cpu">CPU</option>
-          <option value="gpu">GPU</option>
-          <option value="ram">RAM</option>
-          <option value="storage">Almacenamiento</option>
-        </select>
-      </div>
+            <div class="preference-container">
+                <label class="preference-option">
+                    <input type="radio" name="preference" value="gaming" required>
+                    <img src="https://img.icons8.com/external-flat-juicy-fish/344/external-gaming-esports-flat-flat-juicy-fish.png" alt="Gaming Icon" class="preference-icon"> Gaming
+                </label>
+                <label class="preference-option">
+                    <input type="radio" name="preference" value="work" required>
+                    <img src="https://img.icons8.com/external-flat-juicy-fish/344/external-computer-essentials-flat-flat-juicy-fish.png" alt="Work Icon" class="preference-icon"> Work
+                </label>
+                <label class="preference-option">
+                    <input type="radio" name="preference" value="balanced" required>
+                    <img src="https://img.icons8.com/fluency/344/scales.png" alt="Balanced Icon" class="preference-icon"> Balanced
+                </label>
+            </div>
 
-      <button id="optimize-btn">Optimizar</button>
-    </div>
-  </section>
+            <button type="submit">Submit</button>
+            <button type="button" onclick="resetForm()" class="reset-button">Reset</button>
+        </form>
 
-  <!-- Results Section -->
-  <section id="results" class="results-section">
-    <!-- Optimized components list will be generated here -->
-  </section>
+        <div id="result-container"></div>
+    </main>
 
-  <script src="https://sdk.amazonaws.com/js/aws-sdk-2.931.0.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@4.6.0/dist/amazon-cognito-identity.min.js"></script>
-  <script src="functions.js"></script>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.931.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/amazon-cognito-identity-js/4.5.10/amazon-cognito-identity.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="functions.js"></script>
 </body>
 </html>
