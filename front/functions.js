@@ -194,7 +194,33 @@ async function upload() {
         const reader = new FileReader();
         reader.onload = async function(event) {
             const csvData = event.target.result;
-            console.log(csvData);
+            
+            const cleanedCsvData = csvData
+            .replace(/\r/g, '') // remover \r
+            .replace(/"/g, '') // remover TODAS las comillas
+            .split('\n') // dividir en líneas
+            .filter(line => line.trim() !== '') // remover líneas vacías
+            .map(line => {
+                const columns = line.split(',');
+                return columns.slice(1).join(','); // remover primera columna
+            })
+            .map((line, index) => {
+                const columns = line.split(',');
+                
+                // Remover la primera columna (índice) solo de los registros
+                const withoutIndex = columns.slice(0);
+                
+                // Asegurarse de que cada columna tenga un valor
+                const processedColumns = withoutIndex.map(col => 
+                    col.trim() === '' || col === 'NA' ? 'NA' : col
+                );
+                
+                return processedColumns.join(',');
+            })
+            .join('\n'); // unir con \n
+
+            console.log("Request body stringificado:", JSON.stringify(cleanedCsvData));
+
             await getToken()
             .then(token => {
                 if (!token) {
@@ -205,22 +231,24 @@ async function upload() {
                 $.ajax({
                     url: `https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/upload`,
                     type: 'POST',
-                    data: JSON.stringify(csvData),
-                    contentType: 'application/json; charset=utf-8',
+                    data: JSON.stringify(cleanedCsvData),
+                    contentType: 'application/json',
                     headers: {
                         'Authorization': token,
                         'X-Amz-Date': new Date().toISOString()
                     },
                     xhrFields: {
-                        withCredentials: true  // Importante si estás usando credenciales
+                        withCredentials: true
                     },
+                    crossDomain: true,
                     success: function (response) {
                         alert('Archivo cargado exitosamente');
                         document.getElementById('overlay').style.display = 'none';
                         document.getElementById('upload-popup').style.display = 'none';
                     },
-                    error: function () {
-                        alert("F. No funcionó");
+                    error: function (xhr, status, error) {
+                        alert("Error en la carga: " + error);
+                        console.error('Error details:', {xhr, status, error});
                     }
                 });
             })
@@ -264,86 +292,97 @@ async function upload() {
 
 async function optimization() {
     // Lambda Optimization
-    document.getElementById('selectionForm').addEventListener('submit', function(event) {
+    document.getElementById('selectionForm').addEventListener('submit', async function(event) {
         event.preventDefault();
 
         const budget = document.getElementById('budget').value;
         const preference = document.querySelector('input[name="preference"]:checked').value;
 
-        fetch(`https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/optimize`, { 
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                presupuesto: budget,
-                tipo_uso: preference
-            })
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Respuesta recibida:', data); // Log para depuración
-
-            let responseBody;
-
-            // Verificar si 'body' existe en la respuesta
-            if (data.body) {
-                try {
-                    responseBody = JSON.parse(data.body);
-                } catch (e) {
-                    console.error('Error al parsear data.body:', e);
-                    const resultContainer = document.getElementById('result-container');
-                    resultContainer.innerHTML = "<h3>Error al procesar la respuesta del servidor.</h3>";
-                    return;
-                }
-            } else if (data.components) {
-                // En caso de que 'body' no exista, asumir que 'components' está directamente en 'data'
-                responseBody = data;
-            } else {
-                console.error('Respuesta no contiene "body" ni "components":', data);
-                const resultContainer = document.getElementById('result-container');
-                resultContainer.innerHTML = "<h3>Respuesta inválida del servidor.</h3>";
+        await getToken()
+        .then(token => {
+            if (!token) {
+                alert("Debes iniciar sesión primero");
+                console.error('No token available');
                 return;
             }
 
-            // Verificar si 'components' está presente y es un arreglo
-            if (responseBody.components && Array.isArray(responseBody.components)) {
-                const resultContainer = document.getElementById('result-container');
-                let html = "<h3>Recommended Components:</h3><ul>";
+            $.ajax({
+                url: `https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/optimize`,
+                type: 'GET',
+                data: {
+                    presupuesto: budget,
+                    tipo_uso: preference
+                },
+                headers: {
+                    'Authorization': token,
+                },
+                xhrFields: {
+                    withCredentials: true
+                },
+                crossDomain: true,
+                success: function(data) {
+                    console.log('Respuesta recibida:', data);
+                    
+                    let responseBody;
+                    
+                    if (data.body) {
+                        try {
+                            responseBody = JSON.parse(data.body);
+                        } catch (e) {
+                            console.error('Error al parsear data.body:', e);
+                            const resultContainer = document.getElementById('result-container');
+                            resultContainer.innerHTML = "<h3>Error al procesar la respuesta del servidor.</h3>";
+                            return;
+                        }
+                    } else if (data.components) {
+                        responseBody = data;
+                    } else {
+                        console.error('Respuesta no contiene "body" ni "components":', data);
+                        const resultContainer = document.getElementById('result-container');
+                        resultContainer.innerHTML = "<h3>Respuesta inválida del servidor.</h3>";
+                        return;
+                    }
 
-                responseBody.components.forEach(item => {
-                    html += `
-                        <li>
-                            <strong>${capitalizeFirstLetter(item.partType)}:</strong> 
-                            <a href="${item.url}" target="_blank">${item.name}</a> - 
-                            $${item.precio.toFixed(2)}
-                        </li>
-                    `;
-                });
+                    if (responseBody.components && Array.isArray(responseBody.components)) {
+                        const resultContainer = document.getElementById('result-container');
+                        let html = "<h3>Recommended Components:</h3><ul>";
 
-                html += "</ul>";
-                resultContainer.innerHTML = html;
-            } else if (responseBody.error) {
-                // Manejar errores provenientes de Lambda
-                console.error('Error desde Lambda:', responseBody.error);
-                const resultContainer = document.getElementById('result-container');
-                resultContainer.innerHTML = "<h3>Error:</h3><p>${responseBody.error}</p>";
-            } else {
-                // Manejar respuestas inesperadas
-                console.error('Respuesta inesperada:', data);
-                const resultContainer = document.getElementById('result-container');
-                resultContainer.innerHTML = "<h3>Respuesta inesperada del servidor.</h3>";
-            }
+                        responseBody.components.forEach(item => {
+                            html += `
+                                <li>
+                                    <strong>${capitalizeFirstLetter(item.partType)}:</strong> 
+                                    <a href="${item.url}" target="_blank">${item.name}</a> - 
+                                    $${item.precio.toFixed(2)}
+                                </li>
+                            `;
+                        });
+
+                        html += "</ul>";
+                        resultContainer.innerHTML = html;
+                    } else if (responseBody.error) {
+                        console.error('Error desde Lambda:', responseBody.error);
+                        const resultContainer = document.getElementById('result-container');
+                        resultContainer.innerHTML = `<h3>Error:</h3><p>${responseBody.error}</p>`;
+                    } else {
+                        console.error('Respuesta inesperada:', data);
+                        const resultContainer = document.getElementById('result-container');
+                        resultContainer.innerHTML = "<h3>Respuesta inesperada del servidor.</h3>";
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error:', {
+                        status: status,
+                        statusText: xhr.statusText,
+                        error: error,
+                        response: xhr.responseText
+                    });
+                    const resultContainer = document.getElementById('result-container');
+                    resultContainer.innerHTML = "<h3>Error al conectar con el servidor.</h3>";
+                }
+            });
         })
         .catch(error => {
-            console.error('Error:', error);
-            const resultContainer = document.getElementById('result-container');
-            resultContainer.innerHTML = "<h3>Error al conectar con el servidor.</h3>";
+            console.error('Error obteniendo el token:', error);
         });
     });
 

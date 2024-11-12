@@ -1,12 +1,20 @@
 import boto3
 import json
 import pandas as pd
+import os
 
 # Inicializar el cliente de DynamoDB
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 table = dynamodb.Table('componentes')
 
 def lambda_handler(event, context):
+    headers = {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': 'http://' + os.environ.get('BUCKET_NAME') + '.s3-website-us-east-1.amazonaws.com',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+        'Access-Control-Allow-Methods': 'OPTIONS,GET'
+    }
+    
     try:
         print("Evento recibido:", event)
 
@@ -14,9 +22,12 @@ def lambda_handler(event, context):
             raise ValueError("El evento no contiene 'body'.")
 
         # Obtener datos del frontend
-        data = json.loads(event['body'])
-        presupuesto = data.get('presupuesto')
-        tipo_uso = data.get('tipo_uso')
+        query_parameters = event.get('queryStringParameters', {})
+        if not query_parameters:
+            raise ValueError("No se proporcionaron parámetros de consulta.")
+        
+        presupuesto = query_parameters.get('presupuesto')
+        tipo_uso = query_parameters.get('tipo_uso')
 
         if presupuesto is None or tipo_uso is None:
             raise ValueError("Faltan parámetros 'presupuesto' o 'tipo_uso'.")
@@ -57,22 +68,14 @@ def lambda_handler(event, context):
         return {
             'statusCode': 200,
             'body': json.dumps({'components': result}),
-            'headers': {
-                'Access-Control-Allow-Origin': 'http://optipc-front-storage-nic.s3-website-us-east-1.amazonaws.com',  # Asegura que CORS está incluido
-                'Access-Control-Allow-Methods': 'POST,OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type,Authorization'
-            }
+            'headers': headers
         }
     except Exception as e:
-        print("Error:", str(e))  # Log del error
+        print("Error:", str(e))
         return {
-            'statusCode': 500,
+            'statusCode': 400,
             'body': json.dumps({'error': str(e)}),
-            'headers': {
-                'Access-Control-Allow-Origin': 'http://optipc-front-storage-nic.s3-website-us-east-1.amazonaws.com',  # Asegura que CORS está incluido en errores
-                'Access-Control-Allow-Methods': 'POST,OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type,Authorization'
-            }
+            'headers': headers
         }
 
 # Funciones auxiliares
