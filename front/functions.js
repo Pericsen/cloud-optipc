@@ -391,9 +391,12 @@ async function optimization() {
         return string.charAt(0).toUpperCase() + string.slice(1);
     }
 
-    function resetForm() {
-        document.getElementById('selectionForm').reset();
-        document.getElementById('result-container').innerHTML = "";
+    const resetBtn = document.getElementById('reset-button');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+            document.getElementById('selectionForm').reset();
+            document.getElementById('result-container').innerHTML = "";
+        });
     }
 }
 

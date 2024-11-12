@@ -2,10 +2,11 @@ import boto3
 import json
 import pandas as pd
 import os
+from datetime import datetime
+import jwt
 
 # Inicializar el cliente de DynamoDB
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
-table = dynamodb.Table('componentes')
 
 def lambda_handler(event, context):
     headers = {
@@ -17,6 +18,20 @@ def lambda_handler(event, context):
     
     try:
         print("Evento recibido:", event)
+        
+        auth_header = event.get('headers', {}).get('Authorization')
+        user_id = None
+        username = None
+        
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
+            try:
+                # Decodificar el token JWT
+                decoded_token = jwt.decode(token, verify=False)  # Ajusta según tu configuración de JWT
+                user_id = decoded_token.get('sub')
+                username = decoded_token.get('username')
+            except Exception as e:
+                print("Error decodificando token:", str(e))
 
         if 'body' not in event:
             raise ValueError("El evento no contiene 'body'.")
@@ -40,12 +55,13 @@ def lambda_handler(event, context):
 
 
         # Usar scan para obtener todos los elementos de la tabla
-        response = table.scan()
+        tableComponentes = dynamodb.Table('componentes')
+        response = tableComponentes.scan()
         db_data = response.get('Items', [])
 
         # Si hay paginación, continuar obteniendo los siguientes elementos
         while 'LastEvaluatedKey' in response:
-            response = table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
+            response = tableComponentes.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
             db_data.extend(response.get('Items', []))
 
         # Convertir los datos de DynamoDB en un DataFrame de pandas
@@ -57,6 +73,23 @@ def lambda_handler(event, context):
 
         # Lógica de optimización usando pandas
         result = seleccionar_componentes(df, presupuesto, tipo_uso)
+        
+        # Guardar la optimización en DynamoDB si el usuario está autenticado
+        if user_id and username:
+            tablaOptimizaciones = dynamodb.Table('optimizaciones')
+            
+            optimizacion = {
+                'userId': user_id,
+                'username': username,
+                'datetime': datetime.now().isoformat(),
+                'presupuesto': presupuesto,
+                'tipo_uso': tipo_uso,
+                'componentes': result
+            }
+            
+            tablaOptimizaciones.put_item(Item=optimizacion)
+            print("Optimización guardada para el usuario:", username)
+        
 
         # Asegurarse de que result es una lista
         if not isinstance(result, list):
