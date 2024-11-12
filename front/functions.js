@@ -262,6 +262,102 @@ async function upload() {
     };
 }
 
+async function optimization() {
+    // Lambda Optimization
+    document.getElementById('selectionForm').addEventListener('submit', function(event) {
+        event.preventDefault();
+
+        const budget = document.getElementById('budget').value;
+        const preference = document.querySelector('input[name="preference"]:checked').value;
+
+        fetch(`https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/optimize`, { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                presupuesto: budget,
+                tipo_uso: preference
+            })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Respuesta recibida:', data); // Log para depuración
+
+            let responseBody;
+
+            // Verificar si 'body' existe en la respuesta
+            if (data.body) {
+                try {
+                    responseBody = JSON.parse(data.body);
+                } catch (e) {
+                    console.error('Error al parsear data.body:', e);
+                    const resultContainer = document.getElementById('result-container');
+                    resultContainer.innerHTML = "<h3>Error al procesar la respuesta del servidor.</h3>";
+                    return;
+                }
+            } else if (data.components) {
+                // En caso de que 'body' no exista, asumir que 'components' está directamente en 'data'
+                responseBody = data;
+            } else {
+                console.error('Respuesta no contiene "body" ni "components":', data);
+                const resultContainer = document.getElementById('result-container');
+                resultContainer.innerHTML = "<h3>Respuesta inválida del servidor.</h3>";
+                return;
+            }
+
+            // Verificar si 'components' está presente y es un arreglo
+            if (responseBody.components && Array.isArray(responseBody.components)) {
+                const resultContainer = document.getElementById('result-container');
+                let html = "<h3>Recommended Components:</h3><ul>";
+
+                responseBody.components.forEach(item => {
+                    html += `
+                        <li>
+                            <strong>${capitalizeFirstLetter(item.partType)}:</strong> 
+                            <a href="${item.url}" target="_blank">${item.name}</a> - 
+                            $${item.precio.toFixed(2)}
+                        </li>
+                    `;
+                });
+
+                html += "</ul>";
+                resultContainer.innerHTML = html;
+            } else if (responseBody.error) {
+                // Manejar errores provenientes de Lambda
+                console.error('Error desde Lambda:', responseBody.error);
+                const resultContainer = document.getElementById('result-container');
+                resultContainer.innerHTML = "<h3>Error:</h3><p>${responseBody.error}</p>";
+            } else {
+                // Manejar respuestas inesperadas
+                console.error('Respuesta inesperada:', data);
+                const resultContainer = document.getElementById('result-container');
+                resultContainer.innerHTML = "<h3>Respuesta inesperada del servidor.</h3>";
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            const resultContainer = document.getElementById('result-container');
+            resultContainer.innerHTML = "<h3>Error al conectar con el servidor.</h3>";
+        });
+    });
+
+    // Función para capitalizar la primera letra de una cadena
+    function capitalizeFirstLetter(string) {
+        return string.charAt(0).toUpperCase() + string.slice(1);
+    }
+
+    function resetForm() {
+        document.getElementById('selectionForm').reset();
+        document.getElementById('result-container').innerHTML = "";
+    }
+}
+
 function loadConfig() {
   return fetch('./config.json')
       .then(response => {
@@ -300,6 +396,7 @@ async function init() {
     }
 
     login();
+    optimization();
 }
 
 window.addEventListener('load', () => {

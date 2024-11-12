@@ -106,9 +106,9 @@ resource "aws_lambda_function" "upload_data_lambda" {
 #   source_arn    = aws_s3_bucket.csv_bucket.arn
 # }
 
-/// LAMBDA PARA ENVIAR DATOS A LA EC2 (EJECUCIÓN MODELO)
+/// LAMBDA PARA EJECUTAR MODELO OPTIMIZACIÓN
 resource "aws_lambda_function" "optimization_lambda" {
-  function_name = "send-to-ec2-${each.key}"
+  function_name = "optimization_lambda-${each.key}"
   runtime       = "python3.9"
   handler       = "optimization_lambda.lambda_handler"
   role          = data.aws_iam_role.labrole.arn
@@ -124,14 +124,6 @@ resource "aws_lambda_function" "optimization_lambda" {
     subnet_ids         = [each.value]
     security_group_ids = [module.lambda_sg.lambda_security_group_id]
   }
-
-  environment {
-    variables = {
-      EC2_ENDPOINT = "http://${aws_instance.backend_ec2[each.key].private_ip}/optimize"
-    }
-  }
-
-  depends_on = [aws_instance.backend_ec2]
 }
 
 
@@ -432,7 +424,7 @@ resource "aws_lambda_permission" "allow_api_gateway" {
 # }
 
 
-/// FRONT TO BACK LAMBDA
+/// OPTIMIZATION LAMBDA
 resource "aws_api_gateway_resource" "optimization_lambda_resource" {
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
   parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
@@ -596,91 +588,6 @@ resource "aws_lambda_permission" "optimization_lambda_permission" {
 #   source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*"
 # }
 
-
-
-/// MODELO DE OPTIMIZACIÓN EN EC2
-# resource "aws_api_gateway_resource" "optimize_resource" {
-#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-#   parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
-#   path_part   = "optimize"
-# }
-
-# resource "aws_api_gateway_method" "post_optimize" {
-#   rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
-#   resource_id   = aws_api_gateway_resource.optimize_resource.id
-#   http_method   = "POST"
-#   authorization = "NONE"
-# }
-
-# resource "aws_api_gateway_method_response" "post_optimize_response" {
-#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-#   resource_id = aws_api_gateway_resource.optimize_resource.id
-#   http_method = aws_api_gateway_method.post_optimize.http_method
-#   status_code = "200"
-# }
-
-# resource "aws_api_gateway_integration" "optimize_integration" {
-#   for_each = {
-#     "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
-#     "us-east-1b" = element(module.vpc.private_subnets, 1)
-#   }
-
-#   rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
-#   resource_id             = aws_api_gateway_resource.optimize_resource.id
-#   http_method             = aws_api_gateway_method.post_optimize.http_method
-#   integration_http_method = "POST"
-#   type                    = "AWS_PROXY"
-#   uri                     = aws_lambda_function.optimization_lambda[each.key].invoke_arn
-
-#   depends_on = [aws_lambda_permission.optimize_permission]
-# }
-
-# resource "aws_api_gateway_method" "options_optimize" {
-#   rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
-#   resource_id   = aws_api_gateway_resource.optimize_resource.id
-#   http_method   = "OPTIONS"
-#   authorization = "NONE"
-# }
-
-# resource "aws_api_gateway_method_response" "options_response" {
-#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-#   resource_id = aws_api_gateway_resource.optimize_resource.id
-#   http_method = "OPTIONS"
-#   status_code = "200"
-
-#   response_parameters = {
-#     "method.response.header.Access-Control-Allow-Origin"      = true
-#     "method.response.header.Access-Control-Allow-Methods"     = true
-#     "method.response.header.Access-Control-Allow-Headers"     = true
-#   }
-# }
-
-# resource "aws_api_gateway_integration_response" "options_integration_response" {
-#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-#   resource_id = aws_api_gateway_resource.optimize_resource.id
-#   http_method = aws_api_gateway_method.post_optimize.http_method
-#   status_code = "200"
-
-#   response_parameters = {
-#     "method.response.header.Access-Control-Allow-Origin"      = "'*'"
-#     "method.response.header.Access-Control-Allow-Methods"     = "'OPTIONS,POST'"
-#     "method.response.header.Access-Control-Allow-Headers"     = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
-#   }
-# }
-
-# resource "aws_lambda_permission" "optimize_permission" {
-#   for_each = {
-#     "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
-#     "us-east-1b" = element(module.vpc.private_subnets, 1)
-#   }
-
-#   statement_id  = "AllowOptimizeInvocation"
-#   action        = "lambda:InvokeFunction"
-#   function_name = aws_lambda_function.optimization_lambda[each.key].function_name
-#   principal     = "apigateway.amazonaws.com"
-#   source_arn    = "arn:aws:execute-api:us-east-1:964072067438:${aws_api_gateway_rest_api.api_gateway.id}/*/POST/optimize"
-# }
-
 /// GENERAL
 resource "aws_api_gateway_deployment" "api_gateway_deployment" {
   depends_on = [
@@ -691,9 +598,7 @@ resource "aws_api_gateway_deployment" "api_gateway_deployment" {
     aws_api_gateway_integration_response.cors_integration_response_upload,
     aws_api_gateway_integration.optimization_lambda_integration,
     aws_api_gateway_integration.optimization_lambda_cors_integration,
-    aws_api_gateway_integration_response.optimization_lambda_cors_integration_response,
-    # aws_api_gateway_integration.optimize_integration,
-    # aws_api_gateway_integration_response.options_integration_response
+    aws_api_gateway_integration_response.optimization_lambda_cors_integration_response
   ]
 
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
@@ -1143,107 +1048,6 @@ resource "aws_dynamodb_table" "model_data_table" {
     enabled        = true
   }
 }
-
-
-   ####################################
-########       EC2 KEY PAIR       ########
-   ####################################
-
-resource "aws_key_pair" "ec2_key_pair" {
-  key_name   = "ec2_key_pair"
-  public_key = file("~/.ssh/id_rsa.pub")
-}
-
-   ####################################
-########     BASTION HOST EC2     ########
-   ####################################
-
-resource "aws_security_group" "bastion_sg" {
-  vpc_id = module.vpc.vpc_id
-
-  ingress {
-    description = "Allow SSH from anywhere"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Limitar a tu IP para mayor seguridad
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-
-# EC2 Bastion Host en la subnet pública
-resource "aws_instance" "bastion" {
-  for_each = {
-    "us-east-1a" = element(module.vpc.public_subnets, 0) # Se crea una EC2 para la public-subnet de cada AZ
-    "us-east-1b" = element(module.vpc.public_subnets, 1)
-  }
-
-  ami           = data.aws_ami.ec2_ami.id
-  instance_type = "t2.micro"
-  subnet_id     = each.value
-  availability_zone = each.key
-  vpc_security_group_ids = [aws_security_group.bastion_sg.id]
-  associate_public_ip_address = true
-
-  tags = {
-    Name = "BastionHost-${each.key}"
-  }
-
-  key_name = aws_key_pair.ec2_key_pair.key_name
-}
-
-
-   ####################################
-########        BACKEND EC2       ########
-   ####################################
-
-resource "aws_security_group" "private_ec2_sg" {
-  vpc_id = module.vpc.vpc_id
-
-  # permite el ingreso de IPS que accedan al Bastion Host
-  ingress {
-    description = "Allow Bastion Host Traffic"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    security_groups = [aws_security_group.bastion_sg.id]
-  }
-
-  # permite que salga todo
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_instance" "backend_ec2" {
-  for_each = {
-    "us-east-1a" = element(module.vpc.private_subnets, 2) # Se crea una EC2 para la segunda private-subnet de cada AZ (dejo las que tienen VPC endpoint para alojar las lambdas)
-    "us-east-1b" = element(module.vpc.private_subnets, 3)
-  }
-
-  ami           = data.aws_ami.ec2_ami.id
-  instance_type = "t2.micro"
-  subnet_id     = each.value
-  availability_zone = each.key
-  vpc_security_group_ids = [aws_security_group.private_ec2_sg.id]
-
-  tags = {
-    Name = "OptimizationBackend-${each.key}"
-  }
-
-  key_name = aws_key_pair.ec2_key_pair.key_name
-}
-
 
    ###############################
 ########    ARCHIVO LOCAL    ########
