@@ -31,13 +31,13 @@ def lambda_handler(event, context):
         reader = csv.DictReader(io.StringIO(csv_content))
 
         # Conectar a DynamoDB
-        table = dynamodb.Table(os.environ['DYNAMODB_TABLE_NAME'])
+        table = dynamodb.Table('componentes')
 
         # Insertar cada fila del CSV en la tabla DynamoDB
         for row in reader:
             print("Fila procesada:", json.dumps(row, indent=2))
-            numeric_columns = ['coreCount', 'threadCount', 'power', 'VRAM', 'size', 'space', 'precio']
-            
+            numeric_columns = ['coreCount', 'threadCount', 'power', 'VRAM', 'size', 'space', 'precio_ficticio']
+
             item={
                 'partType': row['partType'],
                 'name': row['name'],
@@ -56,12 +56,9 @@ def lambda_handler(event, context):
                 'size': row['size'],
                 'space': row['space'],
                 'productId': row['productId'],
-                'precio': row['precio']
+                'precio_ficticio': row['precio_ficticio'],
+                'price_category': row['price_category']
             }
-            
-            for key, value in item.items():
-                if key in numeric_columns and value != "NA" and value:
-                    item[key] = int(value)
 
             print("Item a insertar:", json.dumps(item, indent=2))
 

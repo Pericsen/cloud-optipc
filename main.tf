@@ -435,7 +435,7 @@ resource "aws_lambda_permission" "allow_api_gateway" {
 resource "aws_api_gateway_resource" "optimization_lambda_resource" {
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
   parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
-  path_part   = "optimize"
+  path_part   = "optimization"
 }
 
 resource "aws_api_gateway_method" "optimization_lambda_method" {

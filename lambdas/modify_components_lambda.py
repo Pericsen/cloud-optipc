@@ -40,7 +40,7 @@ def lambda_handler(event, context):
 
         # Realizar un query usando el GSI
         response = tableComponentes.query(
-            IndexName='PriceIndex',  # Nombre del GSI que creaste
+            IndexName='precio-indice',  # Nombre del GSI que creaste
             KeyConditionExpression=Key('partType').eq(tipo_componente) & Key('precio').between(rango_min, rango_max)
         )
 

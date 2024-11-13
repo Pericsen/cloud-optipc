@@ -307,7 +307,7 @@ async function optimization() {
             }
 
             $.ajax({
-                url: `https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/optimize`,
+                url: `https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/optimization`,
                 type: 'GET',
                 data: {
                     presupuesto: budget,
