@@ -3,46 +3,38 @@ import json
 import pandas as pd
 import os
 from datetime import datetime
-import jwt
+# import jwt
 
 # Inicializar el cliente de DynamoDB
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
+table = dynamodb.Table('componentes')
 
 def lambda_handler(event, context):
-    headers = {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': 'http://' + os.environ.get('BUCKET_NAME') + '.s3-website-us-east-1.amazonaws.com',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-        'Access-Control-Allow-Methods': 'OPTIONS,GET'
-    }
-    
     try:
-        print("Evento recibido:", event)
+        print("Evento recibido:", event)  # Log del evento recibido
         
-        auth_header = event.get('headers', {}).get('Authorization')
-        user_id = None
-        username = None
+        # auth_header = event.get('headers', {}).get('Authorization')
+        # user_id = None
+        # username = None
         
-        if auth_header and auth_header.startswith('Bearer '):
-            token = auth_header.split(' ')[1]
-            try:
-                # Decodificar el token JWT
-                decoded_token = jwt.decode(token, verify=False)  # Ajusta según tu configuración de JWT
-                user_id = decoded_token.get('sub')
-                username = decoded_token.get('username')
-            except Exception as e:
-                print("Error decodificando token:", str(e))
+        # if auth_header and auth_header.startswith('Bearer '):
+        #     token = auth_header.split(' ')[1]
+        #     try:
+        #         # Decodificar el token JWT
+        #         decoded_token = jwt.decode(token, verify=False)  # Ajusta según tu configuración de JWT
+        #         user_id = decoded_token.get('sub')
+        #         username = decoded_token.get('username')
+        #     except Exception as e:
+        #         print("Error decodificando token:", str(e))
 
+        # Verificar si 'body' existe en el evento
         if 'body' not in event:
             raise ValueError("El evento no contiene 'body'.")
 
         # Obtener datos del frontend
-        query_parameters = event.get('queryStringParameters', {})
-        if not query_parameters:
-            raise ValueError("No se proporcionaron parámetros de consulta.")
-        
-        presupuesto = query_parameters.get('presupuesto')
-        tipo_uso = query_parameters.get('tipo_uso')
+        data = json.loads(event['body'])
+        presupuesto = data.get('presupuesto')
+        tipo_uso = data.get('tipo_uso')
 
         if presupuesto is None or tipo_uso is None:
             raise ValueError("Faltan parámetros 'presupuesto' o 'tipo_uso'.")
@@ -68,28 +60,27 @@ def lambda_handler(event, context):
         df = pd.DataFrame(db_data)
 
         # Convertir las columnas relevantes a tipo numérico
-        if 'precio' in df.columns:
-            df['precio'] = pd.to_numeric(df['precio'], errors='coerce')
+        if 'precio_ficticio' in df.columns:
+            df['precio_ficticio'] = pd.to_numeric(df['precio_ficticio'], errors='coerce')
 
         # Lógica de optimización usando pandas
         result = seleccionar_componentes(df, presupuesto, tipo_uso)
         
         # Guardar la optimización en DynamoDB si el usuario está autenticado
-        if user_id and username:
-            tablaOptimizaciones = dynamodb.Table('optimizaciones')
+        # if user_id and username:
+        #     tablaOptimizaciones = dynamodb.Table('optimizaciones')
             
-            optimizacion = {
-                'userId': user_id,
-                'username': username,
-                'datetime': datetime.now().isoformat(),
-                'presupuesto': presupuesto,
-                'tipo_uso': tipo_uso,
-                'componentes': result
-            }
+        #     optimizacion = {
+        #         'userId': user_id,
+        #         'username': username,
+        #         'datetime': datetime.now().isoformat(),
+        #         'presupuesto': presupuesto,
+        #         'tipo_uso': tipo_uso,
+        #         'componentes': result
+        #     }
             
-            tablaOptimizaciones.put_item(Item=optimizacion)
-            print("Optimización guardada para el usuario:", username)
-        
+        #     tablaOptimizaciones.put_item(Item=optimizacion)
+        #     print("Optimización guardada para el usuario:", username)
 
         # Asegurarse de que result es una lista
         if not isinstance(result, list):
@@ -101,14 +92,22 @@ def lambda_handler(event, context):
         return {
             'statusCode': 200,
             'body': json.dumps({'components': result}),
-            'headers': headers
+            'headers': {
+                'Access-Control-Allow-Origin': 'http://' + os.environ.get('BUCKET_NAME') + '.s3-website-us-east-1.amazonaws.com',  # Asegura que CORS está incluido
+                'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization'
+            }
         }
     except Exception as e:
-        print("Error:", str(e))
+        print("Error:", str(e))  # Log del error
         return {
-            'statusCode': 400,
+            'statusCode': 500,
             'body': json.dumps({'error': str(e)}),
-            'headers': headers
+            'headers': {
+                'Access-Control-Allow-Origin': 'http://' + os.environ.get('BUCKET_NAME') + '.s3-website-us-east-1.amazonaws.com',  # Asegura que CORS está incluido en errores
+                'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization'
+            }
         }
 
 # Funciones auxiliares
@@ -177,13 +176,13 @@ def seleccionar_componentes(df, presupuesto, tipo_uso):
 
         # Seleccionar el componente con el precio más cercano al presupuesto asignado
         if not opciones.empty:
-            opciones['diferencia'] = abs(opciones['precio'] - presupuesto_asignado)
+            opciones['diferencia'] = abs(opciones['precio_ficticio'] - presupuesto_asignado)
             mejor_opcion = opciones.sort_values(by='diferencia').iloc[0]
             seleccion.append({
                 'partType': mejor_opcion['partType'],
                 'name': mejor_opcion['name'],
                 'url': mejor_opcion['url'],
-                'precio': mejor_opcion['precio']
+                'precio': mejor_opcion['precio_ficticio']
             })
 
     return seleccion

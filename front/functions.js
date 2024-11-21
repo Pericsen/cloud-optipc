@@ -1,6 +1,89 @@
 let domain, user_pool_client_id, user_pool_id, api_gateway_id;
 let tokenInMemory = null;
 
+// Función para mostrar las alternativas en el contenedor de resultados
+function mostrarAlternativas(alternatives, index) {
+    // Intentar buscar el contenedor de alternativas
+    let alternativesContainer = document.getElementById('alternatives-container');
+
+    // Si el contenedor no existe, crearlo
+    if (!alternativesContainer) {
+        alternativesContainer = document.createElement('div');
+        alternativesContainer.id = 'alternatives-container';
+        document.body.appendChild(alternativesContainer); // Puedes agregarlo en el lugar adecuado en el DOM
+    }
+
+    // Limpiar el contenido previo
+    alternativesContainer.innerHTML = '';
+
+    if (alternatives.length === 0) {
+        alternativesContainer.innerHTML = '<p>No se encontraron alternativas en el rango de precio especificado.</p>';
+        return;
+    }
+
+    // Generar el HTML para mostrar las alternativas
+    let html = "<h3>Alternativas de Componentes:</h3><ul>";
+
+    alternatives.forEach((alternative, altIndex) => {
+        html += `
+            <li>
+                <strong>${alternative.name}:</strong> $${parseFloat(alternative.precio_ficticio).toFixed(2)}
+                <button onclick="elegirComponente(${index}, ${altIndex})">Elegir</button>
+            </li>
+        `;
+    });
+
+    html += "</ul>";
+    alternativesContainer.innerHTML = html;
+
+    // Guardar alternativas para usarlas mas adelante
+    window.alternativas = alternatives;
+}
+
+function elegirComponente(originalIndex, alternativeIndex) {
+    // Obtener el componente alternativo seleccionado
+    const alternative = window.alternativas[alternativeIndex];
+    if (!alternative) {
+        console.error('No se encontró el componente alternativo seleccionado');
+        return;
+    }
+
+    // Actualizar el componente en el listado original
+    const resultContainer = document.getElementById('result-container');
+    let componentItems = resultContainer.getElementsByTagName('li');
+
+    if (originalIndex < 0 || originalIndex >= componentItems.length) {
+        console.error('Índice de componente original no válido');
+        return;
+    }
+
+    // Reemplazar el contenido del componente con el nuevo componente seleccionado
+    const updatedHtml = `
+        <strong>${capitalizeFirstLetter(alternative.partType)}:</strong> 
+        <span>${alternative.name} - $${parseFloat(alternative.precio_ficticio).toFixed(2)}</span>
+        <button onclick="cambiarComponente('${alternative.partType}', ${alternative.precio_ficticio}, ${originalIndex})">Cambiar Componente</button>
+    `;
+
+    componentItems[originalIndex].innerHTML = updatedHtml;
+
+    const alternativesContainer = document.getElementById('alternatives-container');
+    if (alternativesContainer) {
+        alternativesContainer.innerHTML = ''; // Limpiar el contenido del contenedor
+        alternativesContainer.style.display = 'none'; // Ocultar el contenedor
+    }
+}
+
+// Función para capitalizar la primera letra de una cadena
+function capitalizeFirstLetter(string) {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+function resetForm() {
+    document.getElementById('selectionForm').reset();
+    document.getElementById('result-container').innerHTML = "";
+}
+
+
 async function getToken() {
     if (tokenInMemory) {
         return tokenInMemory;
@@ -200,18 +283,14 @@ async function upload() {
             .replace(/"/g, '') // remover TODAS las comillas
             .split('\n') // dividir en líneas
             .filter(line => line.trim() !== '') // remover líneas vacías
-            .map(line => {
-                const columns = line.split(',');
-                return columns.slice(1).join(','); // remover primera columna
-            })
             .map((line, index) => {
                 const columns = line.split(',');
                 
                 // Remover la primera columna (índice) solo de los registros
-                const withoutIndex = columns.slice(0);
+                // const withoutIndex = columns.slice(0);
                 
                 // Asegurarse de que cada columna tenga un valor
-                const processedColumns = withoutIndex.map(col => 
+                const processedColumns = columns.map(col => 
                     col.trim() === '' || col === 'NA' ? 'NA' : col
                 );
                 
@@ -291,156 +370,170 @@ async function upload() {
 }
 
 async function optimization() {
+    const token = await getToken();
+    const headers = {
+        'Content-Type': 'application/json',
+    };
+    if (token){
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    
     // Lambda Optimization
-    document.getElementById('selectionForm').addEventListener('submit', async function(event) {
+    document.getElementById('selectionForm').addEventListener('submit', function(event) {
         event.preventDefault();
 
         const budget = document.getElementById('budget').value;
         const preference = document.querySelector('input[name="preference"]:checked').value;
 
-        await getToken()
-        .then(token => {
-            if (!token) {
-                alert("Debes iniciar sesión primero");
-                console.error('No token available');
+        fetch(`https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/optimization`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                presupuesto: budget,
+                tipo_uso: preference
+            })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Respuesta recibida:', data); // Log para depuración
+
+            let responseBody;
+
+            if (data.body) {
+                try {
+                    responseBody = JSON.parse(data.body);
+                } catch (e) {
+                    console.error('Error al parsear data.body:', e);
+                    document.getElementById('result-container').innerHTML = "<h3>Error al procesar la respuesta del servidor.</h3>";
+                    return;
+                }
+            } else if (data.components) {
+                responseBody = data;
+            } else {
+                console.error('Respuesta no contiene "body" ni "components":', data);
+                document.getElementById('result-container').innerHTML = "<h3>Respuesta inválida del servidor.</h3>";
                 return;
             }
 
-            $.ajax({
-                url: `https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/optimization`,
-                type: 'GET',
-                data: {
-                    presupuesto: budget,
-                    tipo_uso: preference
-                },
-                headers: {
-                    'Authorization': token,
-                },
-                xhrFields: {
-                    withCredentials: true
-                },
-                crossDomain: true,
-                success: function(data) {
-                    console.log('Respuesta recibida:', data);
-                    
-                    let responseBody;
-                    
-                    if (data.body) {
-                        try {
-                            responseBody = JSON.parse(data.body);
-                        } catch (e) {
-                            console.error('Error al parsear data.body:', e);
-                            const resultContainer = document.getElementById('result-container');
-                            resultContainer.innerHTML = "<h3>Error al procesar la respuesta del servidor.</h3>";
-                            return;
-                        }
-                    } else if (data.components) {
-                        responseBody = data;
-                    } else {
-                        console.error('Respuesta no contiene "body" ni "components":', data);
-                        const resultContainer = document.getElementById('result-container');
-                        resultContainer.innerHTML = "<h3>Respuesta inválida del servidor.</h3>";
-                        return;
-                    }
+            // Verificar si 'components' está presente y es un arreglo
+            if (responseBody.components && Array.isArray(responseBody.components)) {
+                const resultContainer = document.getElementById('result-container');
+                let html = "<h3>Recommended Components:</h3><ul>";
 
-                    if (responseBody.components && Array.isArray(responseBody.components)) {
-                        const resultContainer = document.getElementById('result-container');
-                        let html = "<h3>Recommended Components:</h3><ul>";
+                responseBody.components.forEach((item, index) => {
+                    html += `
+                        <li>
+                            <strong>${capitalizeFirstLetter(item.partType)}:</strong> 
+                            <span>${item.name} - $${item.precio.toFixed(2)}</span>
+                            <button onclick="cambiarComponente('${item.partType}', ${item.precio}, ${index})">Cambiar Componente</button>
+                        </li>
+                    `;
+                });
 
-                        responseBody.components.forEach(item => {
-                            html += `
-                                <li>
-                                    <strong>${capitalizeFirstLetter(item.partType)}:</strong> 
-                                    <a href="${item.url}" target="_blank">${item.name}</a> - 
-                                    $${item.precio.toFixed(2)}
-                                </li>
-                            `;
-                        });
-
-                        html += "</ul>";
-                        resultContainer.innerHTML = html;
-                    } else if (responseBody.error) {
-                        console.error('Error desde Lambda:', responseBody.error);
-                        const resultContainer = document.getElementById('result-container');
-                        resultContainer.innerHTML = `<h3>Error:</h3><p>${responseBody.error}</p>`;
-                    } else {
-                        console.error('Respuesta inesperada:', data);
-                        const resultContainer = document.getElementById('result-container');
-                        resultContainer.innerHTML = "<h3>Respuesta inesperada del servidor.</h3>";
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error('Error:', {
-                        status: status,
-                        statusText: xhr.statusText,
-                        error: error,
-                        response: xhr.responseText
-                    });
-                    const resultContainer = document.getElementById('result-container');
-                    resultContainer.innerHTML = "<h3>Error al conectar con el servidor.</h3>";
-                }
-            });
+                html += "</ul>";
+                resultContainer.innerHTML = html;
+            } else if (responseBody.error) {
+                console.error('Error desde Lambda:', responseBody.error);
+                document.getElementById('result-container').innerHTML = `<h3>Error:</h3><p>${responseBody.error}</p>`;
+            } else {
+                console.error('Respuesta inesperada:', data);
+                document.getElementById('result-container').innerHTML = "<h3>Respuesta inesperada del servidor.</h3>";
+            }
         })
         .catch(error => {
-            console.error('Error obteniendo el token:', error);
+            console.error('Error:', error);
+            document.getElementById('result-container').innerHTML = "<h3>Error al conectar con el servidor.</h3>";
         });
     });
+}
 
-    // Función para capitalizar la primera letra de una cadena
-    function capitalizeFirstLetter(string) {
-        return string.charAt(0).toUpperCase() + string.slice(1);
-    }
+// Función para cambiar el componente y mostrar alternativas
+async function cambiarComponente(tipoComponente, precioFicticio, index) {
+    console.log('Solicitando alternativas para:', tipoComponente, 'con precio:', precioFicticio);
 
-    const resetBtn = document.getElementById('reset-button');
-    if (resetBtn) {
-        resetBtn.addEventListener('click', function() {
-            document.getElementById('selectionForm').reset();
-            document.getElementById('result-container').innerHTML = "";
+    try {
+        const response = await fetch(`https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/modify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                tipo_componente: tipoComponente,
+                precio_ficticio: precioFicticio,
+            }),
         });
+
+        console.log('Respuesta recibida del servidor:', response);
+
+        if (!response.ok) {
+            throw new Error('Error al obtener alternativas del servidor');
+        }
+
+        const data = await response.json();
+        console.log('Datos obtenidos:', data);
+        mostrarAlternativas(data.alternatives, index);
+        
+        const alternativesContainer = document.getElementById('alternatives-container');
+        if (alternativesContainer) {
+            alternativesContainer.style.display = 'block';
+        }
+
+    } catch (error) {
+        console.error('Error al cambiar componente:', error);
+        const alternativesContainer = document.getElementById('alternatives-container');
+        alternativesContainer.innerHTML = `<p>Error al obtener alternativas: ${error.message}</p>`;
     }
 }
+
+
 
 function loadConfig() {
-  return fetch('./config.json')
-      .then(response => {
-          if (!response.ok) {
-              throw new Error('Network response was not ok');
-          }
-          return response.json();
-      })
-      .then(config => {
-          // Asignar valores a las variables globales
-          domain = config.domain;
-          user_pool_client_id = config.user_pool_client_id;
-          user_pool_id = config.user_pool_id;
-          api_gateway_id = config.api_gateway_id;
-
-          init();
-      })
-      .catch(error => {
-          console.error('There was a problem with the fetch operation:', error);
-      });
-}
-
-async function init() {
-    AWS.config.region = 'us-east-1';
-
-    // Verificar permisos antes de mostrar el botón de upload
-    const isAdmin = await verificarPermisosAdmin();
-    const uploadBtn = document.getElementById("upload");
+    return fetch('./config.json')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(config => {
+            // Asignar valores a las variables globales
+            domain = config.domain;
+            user_pool_client_id = config.user_pool_client_id;
+            user_pool_id = config.user_pool_id;
+            api_gateway_id = config.api_gateway_id;
   
-    if (uploadBtn) {
-        if (!isAdmin) {
-            document.getElementById("upload").style.display = 'none';
-        } else {
-            upload(); // Solo inicializar la funcionalidad de upload si es admin
-        }
-    }
-
-    login();
-    optimization();
-}
-
-window.addEventListener('load', () => {
-    loadConfig();
-});
+            init();
+        })
+        .catch(error => {
+            console.error('There was a problem with the fetch operation:', error);
+        });
+  }
+  
+  async function init() {
+      AWS.config.region = 'us-east-1';
+  
+      // Verificar permisos antes de mostrar el botón de upload
+      const isAdmin = await verificarPermisosAdmin();
+      const uploadBtn = document.getElementById("upload");
+    
+      if (uploadBtn) {
+          if (!isAdmin) {
+              document.getElementById("upload").style.display = 'none';
+          } else {
+              upload(); // Solo inicializar la funcionalidad de upload si es admin
+          }
+      }
+  
+      login();
+      optimization();
+      // cambiarComponente();
+  }
+  
+  window.addEventListener('load', () => {
+      loadConfig();
+  });
