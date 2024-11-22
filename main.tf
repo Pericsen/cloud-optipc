@@ -617,6 +617,7 @@ resource "aws_api_gateway_integration_response" "optimization_lambda_cors_integr
   }
 
   depends_on = [
+    aws_api_gateway_method_response.optimization_lambda_cors_method_response,
     aws_api_gateway_integration.optimization_lambda_cors_integration,
     aws_api_gateway_method.optimization_lambda_options_method
   ]
@@ -966,7 +967,7 @@ resource "aws_api_gateway_authorizer" "cognito_authorizer" {
 ########        FRONTEND S3       ########
    ####################################
 
-# http://optipc-front-storage-tom.s3-website-us-east-1.amazonaws.com
+# http://optipc-front-storage-x.s3-website-us-east-1.amazonaws.com
 resource "aws_s3_bucket" "frontend_bucket"{
     bucket = var.bucket_name
 
@@ -978,7 +979,7 @@ resource "aws_s3_bucket" "frontend_bucket"{
 
 # Configuración del alojamiento de sitios web estáticos
 resource "aws_s3_bucket_website_configuration" "frontend_bucket_website" {
-  bucket = aws_s3_bucket.frontend_bucket.bucket
+  bucket = aws_s3_bucket.frontend_bucket.id
 
   index_document {
     suffix = "index.html"
@@ -1150,6 +1151,105 @@ resource "aws_dynamodb_table" "model_data_table" {
   }
 }
 
+# csv-to-dynamo lambda 
+resource "aws_lambda_function" "csv_to_dynamodb" {
+  filename         = "./lambdas/csv_to_dynamo.zip"
+  function_name    = "csv_to_dynamo"
+  role             = data.aws_iam_role.labrole.arn
+  handler          = "csv_to_dynamo.lambda_handler"
+  runtime          = "python3.8"
+
+  environment {
+    variables = {
+      TABLE_NAME = aws_dynamodb_table.csv_data_table.name
+    }
+  }
+}
+
+resource "aws_s3_bucket" "csv_bucket" {
+  bucket = var.csv_bucket_name
+
+  tags = {
+    Name        = var.csv_bucket_name
+    Environment = "production"
+  }
+}
+
+resource "aws_s3_bucket_policy" "csv_bucket_policy" {
+  bucket = aws_s3_bucket.csv_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Deny"
+        Principal = "*"
+        Action   = "s3:*"
+        Resource = [
+          "${aws_s3_bucket.csv_bucket.arn}",
+          "${aws_s3_bucket.csv_bucket.arn}/*"
+        ],
+        Condition = {
+          Bool = {
+            "aws:SecureTransport": false
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_s3_bucket_public_access_block" "csv_bucket_block" {
+  bucket                  = aws_s3_bucket.csv_bucket.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_object" "csv_upload" {
+  bucket = aws_s3_bucket.csv_bucket.bucket
+  key    = "import/componentes_optimizados.csv"
+  source = "./data/componentes_optimizados.csv"
+  acl    = "private"
+}
+
+output "bucket_name" {
+  value = aws_s3_bucket.csv_bucket.bucket
+} 
+
+output "bucket_arn" {
+  value = aws_s3_bucket.csv_bucket.arn
+}
+
+resource "aws_lambda_permission" "allow_s3_invoke" {
+  statement_id  = "AllowS3Invoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.csv_to_dynamodb.function_name
+  principal     = "s3.amazonaws.com"
+
+  source_arn = aws_s3_bucket.csv_bucket.arn
+}
+
+
+resource "aws_s3_bucket_notification" "s3_notification" {
+  bucket = aws_s3_bucket.csv_bucket.id
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.csv_to_dynamodb.arn
+    events              = ["s3:ObjectCreated:*"]
+  }
+
+  depends_on = [
+    aws_s3_bucket.csv_bucket,
+    aws_lambda_function.csv_to_dynamodb,
+    aws_lambda_permission.allow_s3_invoke
+  ]
+}
+
+
+
+
    ###############################
 ########    ARCHIVO LOCAL    ########
    ###############################
@@ -1164,7 +1264,7 @@ resource "local_file" "config_file" {
     api_gateway_id        = aws_api_gateway_rest_api.api_gateway.id
     # api_gateway_id        = aws_apigatewayv2_api.http_api.id
     user_pool_id          = aws_cognito_user_pool.user_pool.id
-    website_endpoint      = aws_s3_bucket.frontend_bucket.website_endpoint
+    website_endpoint      = aws_s3_bucket_website_configuration.frontend_bucket_website.website_endpoint
   })
 }
 

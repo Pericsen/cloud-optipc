@@ -8,3 +8,5 @@ Considerando lo explicado anteriormente, para ejecutar el comando de terraform q
 terraform init
 
 terraform apply
+
+aws s3 cp ./data/componentes_optimizados.csv s3://csv-dynamodb-bucket
