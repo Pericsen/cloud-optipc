@@ -48,6 +48,75 @@ module "lambda_sg" {
 ########          LAMBDAS         ########
    ####################################
 
+# module "lambda" {
+#   source = "./modulos/lambda"
+#   role = data.aws_iam_role.labrole.arn
+#   lambdas = [
+#     { /// LAMBDA PARA CONVERTIR URL HTTP A HTTPS Y REDIRIGIR A COGNITO UI
+#       name = "https_lambda"
+#       handler = "https_lambda.handler"
+#       runtime       = "nodejs18.x"
+#       environment_variables = [
+#         {
+#           name = "USER_POOL_ID"
+#           value = aws_cognito_user_pool.user_pool.id
+#         },
+#         {
+#           name = "REDIRECT_ADMIN_URL"
+#           value = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/admin_login.html"
+#         },
+#         {
+#           name = "REDIRECT_USER_URL"
+#           value = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/login.html"
+#         },
+#         {
+#           name = "LOGOUT_REDIRECT_URL"
+#           value = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/index.html"
+#         },
+#         {
+#           name = "CLIENT_ID"
+#           value = aws_cognito_user_pool_client.user_pool_client.id
+#         }
+#       ]
+#     },
+#     { /// LAMBDA PARA SUBIR DATA DE CSV A DYNAMO
+#       name = "upload_data_lambda"
+#       handler = "upload_data_lambda.lambda_handler"
+#       runtime       = "python3.9"
+#       environment_variables = [
+#         {
+#           name = "DYNAMODB_TABLE_NAME"
+#           value = aws_dynamodb_table.csv_data_table.name
+#         },
+#         {
+#           name = "BUCKET_NAME"
+#           value = var.bucket_name
+#         }
+#       ]
+#     },
+#     { /// LAMBDA PARA EJECUTAR MODELO OPTIMIZACIÓN
+#       name = "upload_data_lambda"
+#       handler = "upload_data_lambda.lambda_handler"
+#       runtime       = "python3.9"
+#       environment_variables = [
+#         {
+#           name = "DYNAMODB_TABLE_NAME"
+#           value = aws_dynamodb_table.csv_data_table.name
+#         },
+#         {
+#           name = "BUCKET_NAME"
+#           value = var.bucket_name
+#         }
+#       ]
+
+#       vpc_config = {
+#         subnet_ids         = module.vpc.private_subnets
+#         security_group_ids = [module.lambda_sg.lambda_security_group_id]
+#       }
+#     },
+#   ]
+# }
+
 /// LAMBDA PARA CONVERTIR URL HTTP A HTTPS Y REDIRIGIR A COGNITO UI
 resource "aws_lambda_function" "https_lambda" {
   function_name = "https_lambda"
@@ -64,7 +133,8 @@ resource "aws_lambda_function" "https_lambda" {
       REDIRECT_ADMIN_URL        = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/admin_login.html",
       REDIRECT_USER_URL        = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/login.html",
       LOGOUT_REDIRECT_URL = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/index.html",
-      CLIENT_ID = aws_cognito_user_pool_client.user_pool_client.id    }
+      CLIENT_ID = aws_cognito_user_pool_client.user_pool_client.id
+    }
   }
 }
 
@@ -72,10 +142,10 @@ resource "aws_lambda_function" "https_lambda" {
 resource "aws_lambda_function" "upload_data_lambda" {
   function_name    = "upload_data_lambda"
   runtime          = "python3.9"
-  handler          = "upload_data_lambda.lambda_handler"
+  handler          = "upload_lambda.lambda_handler"
   role             = data.aws_iam_role.labrole.arn
 
-  filename         = "./lambdas/upload_data_lambda.zip"
+  filename         = "./lambdas/upload_lambda.zip"
 
   environment {
     variables = {
@@ -131,6 +201,10 @@ resource "aws_lambda_function" "optimization_lambda" {
     subnet_ids         = [each.value]
     security_group_ids = [module.lambda_sg.lambda_security_group_id]
   }
+
+  layers = [
+    data.klayers_package_latest_version.pandas.arn
+  ]
 }
 
 
@@ -441,9 +515,8 @@ resource "aws_api_gateway_resource" "optimization_lambda_resource" {
 resource "aws_api_gateway_method" "optimization_lambda_method" {
   rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
   resource_id   = aws_api_gateway_resource.optimization_lambda_resource.id
-  http_method   = "GET"
-  authorization = "COGNITO_USER_POOLS"
-  authorizer_id = aws_api_gateway_authorizer.cognito_authorizer.id
+  http_method   = "POST"
+  authorization = "NONE"
 }
 
 resource "aws_api_gateway_method" "optimization_lambda_options_method" {
@@ -462,7 +535,7 @@ resource "aws_api_gateway_integration" "optimization_lambda_integration" {
   rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
   resource_id             = aws_api_gateway_resource.optimization_lambda_resource.id
   http_method             = aws_api_gateway_method.optimization_lambda_method.http_method
-  integration_http_method = "GET"
+  integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.optimization_lambda[each.key].invoke_arn
 
@@ -521,7 +594,7 @@ resource "aws_api_gateway_integration_response" "optimization_lambda_post_integr
   response_parameters = {
     "method.response.header.Access-Control-Allow-Origin"      = "'http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com'"
     "method.response.header.Access-Control-Allow-Headers"     = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-    "method.response.header.Access-Control-Allow-Methods"     = "'OPTIONS,GET'"
+    "method.response.header.Access-Control-Allow-Methods"     = "'OPTIONS,POST'"
     "method.response.header.Access-Control-Allow-Credentials" = "'true'"
   }
 
@@ -538,7 +611,7 @@ resource "aws_api_gateway_integration_response" "optimization_lambda_cors_integr
 
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers"     = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-    "method.response.header.Access-Control-Allow-Methods"     = "'OPTIONS,GET'"
+    "method.response.header.Access-Control-Allow-Methods"     = "'OPTIONS,POST'"
     "method.response.header.Access-Control-Allow-Origin"      = "'http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com'"
     "method.response.header.Access-Control-Allow-Credentials" = "'true'"
   }

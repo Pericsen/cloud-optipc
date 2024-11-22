@@ -220,3 +220,23 @@ button[type="submit"]:hover {
     background-color: #00b2cc;
 }
 
+#layer_carga {
+    width: 100%;
+    height: 100%;
+    background-color: #00d4ff;
+    z-index: 100;
+    position: absolute;
+    display: none;
+    justify-content: center;
+    align-items: center;
+}
+
+#loadingIcon {
+    display: none;
+    justify-content: center;
+    z-index: 101;
+}
+
+#loadingIcon * {
+    width: 100%;
+}

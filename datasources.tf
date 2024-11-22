@@ -16,3 +16,8 @@ data "aws_caller_identity" "current" {}
 data "aws_iam_role" "labrole" {
   name = "labrole"  # Cambia esto por el nombre de tu rol
 }
+
+data "klayers_package_latest_version" "pandas" {
+  name   = "pandas"
+  region = "us-east-1"
+}

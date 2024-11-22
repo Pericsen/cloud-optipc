@@ -268,6 +268,8 @@ async function upload() {
     document.getElementById('uploadButton').onclick = async function() {
         const fileInput = document.getElementById('csvFile');
         const file = fileInput.files[0];
+        const layerCarga = document.getElementById('layer_carga');
+        const loadingIcon = document.getElementById('loadingIcon');
 
         if (!file) {
             alert("Por favor, selecciona un archivo CSV.");
@@ -277,92 +279,74 @@ async function upload() {
         const reader = new FileReader();
         reader.onload = async function(event) {
             const csvData = event.target.result;
-            
-            const cleanedCsvData = csvData
-            .replace(/\r/g, '') // remover \r
-            .replace(/"/g, '') // remover TODAS las comillas
-            .split('\n') // dividir en líneas
-            .filter(line => line.trim() !== '') // remover líneas vacías
-            .map((line, index) => {
-                const columns = line.split(',');
+
+            layerCarga.style.display = 'flex';
+            loadingIcon.style.display = 'flex';
+
+            try {
+                const cleanedCsvData = csvData
+                .replace(/\r/g, '') // remover \r
+                .replace(/"/g, '') // remover TODAS las comillas
+                .split('\n') // dividir en líneas
+                .filter(line => line.trim() !== '') // remover líneas vacías
+                .map((line, index) => {
+                    const columns = line.split(',');
+                    
+                    // Remover la primera columna (índice) solo de los registros
+                    // const withoutIndex = columns.slice(0);
+                    
+                    // Asegurarse de que cada columna tenga un valor
+                    const processedColumns = columns.map(col => 
+                        col.trim() === '' || col === 'NA' ? 'NA' : col
+                    );
+                    
+                    return processedColumns.join(',');
+                })
+                .join('\n'); // unir con \n
+
+                console.log("Request body stringificado:", JSON.stringify(cleanedCsvData));
+
+                await getToken()
+                    .then(token => {
+                        if (!token) {
+                            console.error('No token available');
+                            return;
+                        }
                 
-                // Remover la primera columna (índice) solo de los registros
-                // const withoutIndex = columns.slice(0);
-                
-                // Asegurarse de que cada columna tenga un valor
-                const processedColumns = columns.map(col => 
-                    col.trim() === '' || col === 'NA' ? 'NA' : col
-                );
-                
-                return processedColumns.join(',');
-            })
-            .join('\n'); // unir con \n
-
-            console.log("Request body stringificado:", JSON.stringify(cleanedCsvData));
-
-            await getToken()
-            .then(token => {
-                if (!token) {
-                    console.error('No token available');
-                    return;
-                }
-        
-                $.ajax({
-                    url: `https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/upload`,
-                    type: 'POST',
-                    data: JSON.stringify(cleanedCsvData),
-                    contentType: 'application/json',
-                    headers: {
-                        'Authorization': token,
-                        'X-Amz-Date': new Date().toISOString()
-                    },
-                    xhrFields: {
-                        withCredentials: true
-                    },
-                    crossDomain: true,
-                    success: function (response) {
-                        alert('Archivo cargado exitosamente');
-                        document.getElementById('overlay').style.display = 'none';
-                        document.getElementById('upload-popup').style.display = 'none';
-                    },
-                    error: function (xhr, status, error) {
-                        alert("Error en la carga: " + error);
-                        console.error('Error details:', {xhr, status, error});
-                    }
-                });
-            })
-            .catch(error => {
-                console.error('Error obteniendo el token:', error);
-            });
-            
-            // try {
-                // const response = await fetch(`https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/upload`, {
-                // // const response = await fetch(`https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/csv_to_dynamo`, {
-                //     method: 'POST',
-                //     credentials: 'include',
-                //     headers: {
-                //         'Authorization': 'Bearer ' + token,
-                //         'Content-Type': 'application/json'
-                //     },
-                //     body: JSON.stringify({ data: csvData })
-                // });
-            
-                // if (!response.ok) {
-                //     throw new Error('Error al cargar el archivo CSV');
-                // }
-
-                // const result = await response.json();
-                // console.log('Archivo CSV cargado exitosamente:', result);
-                // alert('Archivo cargado exitosamente');
-
-                // Cerrar el popup después de la carga
-                // document.getElementById('overlay').style.display = 'none';
-                // document.getElementById('uploadPopup').style.display = 'none';
-            // } catch (error) {
-            //     console.error('Error:', error);
-            //     alert('Error al cargar el archivo CSV: ' + error.message);
-            // }
-
+                        $.ajax({
+                            url: `https://${api_gateway_id}.execute-api.us-east-1.amazonaws.com/prod/upload`,
+                            type: 'POST',
+                            data: JSON.stringify(cleanedCsvData),
+                            contentType: 'application/json',
+                            headers: {
+                                'Authorization': token,
+                                'X-Amz-Date': new Date().toISOString()
+                            },
+                            xhrFields: {
+                                withCredentials: true
+                            },
+                            crossDomain: true,
+                            success: function (response) {
+                                alert('Archivo cargado exitosamente');
+                                document.getElementById('overlay').style.display = 'none';
+                                document.getElementById('upload-popup').style.display = 'none';
+                            },
+                            error: function (xhr, status, error) {
+                                alert("Error en la carga: " + error);
+                                console.error('Error details:', {xhr, status, error});
+                            }
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error obteniendo el token:', error);
+                    })
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error durante la carga del archivo: ' + error.message);
+            } finally {
+                layerCarga.style.display = 'none';
+                loadingIcon.style.display = 'none';
+            }
         };
 
         reader.readAsText(file);
