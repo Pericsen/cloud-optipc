@@ -48,75 +48,6 @@ module "lambda_sg" {
 ########          LAMBDAS         ########
    ####################################
 
-# module "lambda" {
-#   source = "./modulos/lambda"
-#   role = data.aws_iam_role.labrole.arn
-#   lambdas = [
-#     { /// LAMBDA PARA CONVERTIR URL HTTP A HTTPS Y REDIRIGIR A COGNITO UI
-#       name = "https_lambda"
-#       handler = "https_lambda.handler"
-#       runtime       = "nodejs18.x"
-#       environment_variables = [
-#         {
-#           name = "USER_POOL_ID"
-#           value = aws_cognito_user_pool.user_pool.id
-#         },
-#         {
-#           name = "REDIRECT_ADMIN_URL"
-#           value = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/admin_login.html"
-#         },
-#         {
-#           name = "REDIRECT_USER_URL"
-#           value = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/login.html"
-#         },
-#         {
-#           name = "LOGOUT_REDIRECT_URL"
-#           value = "http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com/index.html"
-#         },
-#         {
-#           name = "CLIENT_ID"
-#           value = aws_cognito_user_pool_client.user_pool_client.id
-#         }
-#       ]
-#     },
-#     { /// LAMBDA PARA SUBIR DATA DE CSV A DYNAMO
-#       name = "upload_data_lambda"
-#       handler = "upload_data_lambda.lambda_handler"
-#       runtime       = "python3.9"
-#       environment_variables = [
-#         {
-#           name = "DYNAMODB_TABLE_NAME"
-#           value = aws_dynamodb_table.csv_data_table.name
-#         },
-#         {
-#           name = "BUCKET_NAME"
-#           value = var.bucket_name
-#         }
-#       ]
-#     },
-#     { /// LAMBDA PARA EJECUTAR MODELO OPTIMIZACIÓN
-#       name = "upload_data_lambda"
-#       handler = "upload_data_lambda.lambda_handler"
-#       runtime       = "python3.9"
-#       environment_variables = [
-#         {
-#           name = "DYNAMODB_TABLE_NAME"
-#           value = aws_dynamodb_table.csv_data_table.name
-#         },
-#         {
-#           name = "BUCKET_NAME"
-#           value = var.bucket_name
-#         }
-#       ]
-
-#       vpc_config = {
-#         subnet_ids         = module.vpc.private_subnets
-#         security_group_ids = [module.lambda_sg.lambda_security_group_id]
-#       }
-#     },
-#   ]
-# }
-
 /// LAMBDA PARA CONVERTIR URL HTTP A HTTPS Y REDIRIGIR A COGNITO UI
 resource "aws_lambda_function" "https_lambda" {
   function_name = "https_lambda"
@@ -155,28 +86,6 @@ resource "aws_lambda_function" "upload_data_lambda" {
   }
 }
 
-# resource "aws_s3_bucket_notification" "s3_trigger_lambda" {
-#   bucket = aws_s3_bucket.csv_bucket.id
-
-#   lambda_function {
-#     lambda_function_arn = aws_lambda_function.upload_data_lambda.arn
-#     events              = ["s3:ObjectCreated:*"]
-#     filter_suffix       = ".csv"
-#   }
-
-#   depends_on = [
-#     aws_lambda_permission.allow_s3_invoke
-#   ]
-# }
-
-# resource "aws_lambda_permission" "allow_s3_invoke" {
-#   statement_id  = "AllowS3Invoke"
-#   action        = "lambda:InvokeFunction"
-#   function_name = aws_lambda_function.upload_data_lambda.function_name
-#   principal     = "s3.amazonaws.com"
-#   source_arn    = aws_s3_bucket.csv_bucket.arn
-# }
-
 /// LAMBDA PARA EJECUTAR MODELO OPTIMIZACIÓN
 resource "aws_lambda_function" "optimization_lambda" {
   function_name = "optimization_lambda-${each.key}"
@@ -186,6 +95,35 @@ resource "aws_lambda_function" "optimization_lambda" {
 
   filename      = "./lambdas/optimization_lambda.zip"
 
+  environment {
+    variables = {
+      BUCKET_NAME = var.bucket_name
+    }
+  }
+
+  for_each = {
+    "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
+    "us-east-1b" = element(module.vpc.private_subnets, 1)
+  }
+
+  vpc_config {
+    subnet_ids         = [each.value]
+    security_group_ids = [module.lambda_sg.lambda_security_group_id]
+  }
+
+  layers = [
+    data.klayers_package_latest_version.pandas.arn
+  ]
+}
+
+// LAMBDA PARA EJECUTAR MODIFICAR COMPONENTES
+
+resource "aws_lambda_function" "modify_lambda" {
+  function_name = "modify_lambda-${each.key}"
+  runtime       = "python3.9"
+  handler       = "modify_lambda.lambda_handler"
+  role          = data.aws_iam_role.labrole.arn
+  filename      = "./lambdas/modify_lambda.zip"
   environment {
     variables = {
       BUCKET_NAME = var.bucket_name
@@ -217,32 +155,6 @@ resource "aws_api_gateway_rest_api" "api_gateway" {
   description = "API Gateway for Lambdas redirection"
 }
 
-# resource "aws_apigatewayv2_api" "http_api" {
-#   name          = "http-api-gateway"
-#   description   = "HTTP API Gateway for Lambdas redirection"
-#   protocol_type = "HTTP"
-
-#   cors_configuration {
-#     allow_credentials = false
-#     allow_methods     = ["GET", "POST", "OPTIONS", "PUT", "DELETE"]
-#     allow_origins     = ["*"]
-#     allow_headers     = ["Content-Type", "Authorization"]
-#     expose_headers    = ["Content-Type", "Authorization"]
-#     max_age           = 3600
-#   }
-# }
-
-# output "http_api_id" {
-#   value = aws_apigatewayv2_api.http_api.id
-# }
-
-# resource "aws_apigatewayv2_stage" "default_stage" {
-#   api_id = aws_apigatewayv2_api.http_api.id
-#   name   = "prod"
-#   auto_deploy = true
-# }
-
-
 /// HTTPS LAMBDA
 resource "aws_api_gateway_resource" "https_lambda_resource" {
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
@@ -256,14 +168,6 @@ resource "aws_api_gateway_method" "https_lambda_method" {
   http_method   = "GET"
   authorization = "NONE"
 }
-
-# resource "aws_api_gateway_method" "https_lambda_options_method" {
-#   rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
-#   resource_id   = aws_api_gateway_resource.https_lambda_resource.id
-#   http_method   = "OPTIONS"
-#   authorization = "NONE"
-# }
-
 resource "aws_api_gateway_integration" "https_lambda_integration" {
   rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
   resource_id             = aws_api_gateway_resource.https_lambda_resource.id
@@ -273,61 +177,6 @@ resource "aws_api_gateway_integration" "https_lambda_integration" {
   uri                     = aws_lambda_function.https_lambda.invoke_arn
 }
 
-# resource "aws_api_gateway_integration" "https_lambda_options_integration" {
-#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-#   resource_id = aws_api_gateway_resource.https_lambda_resource.id
-#   http_method = aws_api_gateway_method.https_lambda_options_method.http_method
-#   type        = "MOCK"
-
-#   request_templates = {
-#     "application/json" = "{\"statusCode\": 200}"
-#   }
-# }
-
-# resource "aws_api_gateway_method_response" "https_lambda_options_response" {
-#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-#   resource_id = aws_api_gateway_resource.https_lambda_resource.id
-#   http_method = aws_api_gateway_method.https_lambda_options_method.http_method
-#   status_code = "200"
-
-#   response_parameters = {
-#     "method.response.header.Access-Control-Allow-Headers" = true
-#     "method.response.header.Access-Control-Allow-Methods" = true
-#     "method.response.header.Access-Control-Allow-Origin"  = true
-#   }
-
-#   response_models = {
-#     "application/json" = "Empty"
-#   }
-# }
-
-# resource "aws_api_gateway_integration_response" "https_lambda_options_integration_response" {
-#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-#   resource_id = aws_api_gateway_resource.https_lambda_resource.id
-#   http_method = aws_api_gateway_method.https_lambda_options_method.http_method
-#   status_code = aws_api_gateway_method_response.https_lambda_options_response.status_code
-
-#   response_parameters = {
-#     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-#     "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
-#     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-#   }
-# }
-
-# resource "aws_api_gateway_method_response" "https_lambda_get_response" {
-#   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
-#   resource_id = aws_api_gateway_resource.https_lambda_resource.id
-#   http_method = aws_api_gateway_method.https_lambda_method.http_method
-#   status_code = "200"
-
-#   response_parameters = {
-#     "method.response.header.Access-Control-Allow-Origin" = true
-#     "method.response.header.Access-Control-Allow-Headers" = true
-#     "method.response.header.Access-Control-Allow-Methods" = true
-#     "method.response.header.Access-Control-Allow-Credentials" = true
-#   }
-# }
-
 resource "aws_lambda_permission" "api_gateway_invoke" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
@@ -335,27 +184,6 @@ resource "aws_lambda_permission" "api_gateway_invoke" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.api_gateway.execution_arn}/*/*/*"
 }
-
-# resource "aws_apigatewayv2_integration" "https_lambda_integration" {
-#   api_id                 = aws_apigatewayv2_api.http_api.id
-#   integration_type       = "AWS_PROXY"
-#   integration_uri        = aws_lambda_function.https_lambda.invoke_arn
-#   payload_format_version = "2.0"
-# }
-
-# resource "aws_apigatewayv2_route" "https_redirect_route" {
-#   api_id    = aws_apigatewayv2_api.http_api.id
-#   route_key = "GET /redirect"
-#   target    = "integrations/${aws_apigatewayv2_integration.https_lambda_integration.id}"
-# }
-
-# resource "aws_lambda_permission" "https_lambda_permission" {
-#   statement_id  = "AllowHttpApiInvoke"
-#   action        = "lambda:InvokeFunction"
-#   function_name = aws_lambda_function.https_lambda.function_name
-#   principal     = "apigateway.amazonaws.com"
-#   source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*"
-# }
 
 
 /// LAMBDA PARA SUBIR DATA DE CSV A DYNAMO
@@ -476,33 +304,6 @@ resource "aws_lambda_permission" "allow_api_gateway" {
 
   source_arn = "${aws_api_gateway_rest_api.api_gateway.execution_arn}/*/*/*"
 }
-
-# resource "aws_apigatewayv2_integration" "upload_lambda_integration" {
-#   api_id                  = aws_apigatewayv2_api.http_api.id
-#   integration_type        = "AWS_PROXY"
-#   integration_uri         = aws_lambda_function.upload_data_lambda.invoke_arn
-#   payload_format_version  = "2.0"
-# }
-
-# resource "aws_apigatewayv2_route" "upload_route" {
-#   api_id    = aws_apigatewayv2_api.http_api.id
-#   route_key = "POST /upload"
-#   target    = "integrations/${aws_apigatewayv2_integration.upload_lambda_integration.id}"
-# }
-
-# resource "aws_apigatewayv2_route" "cors_options_route" {
-#   api_id    = aws_apigatewayv2_api.http_api.id
-#   route_key = "OPTIONS /upload"
-#   target    = "integrations/${aws_apigatewayv2_integration.upload_lambda_integration.id}"
-# }
-
-# resource "aws_lambda_permission" "upload_data_lambda_permission" {
-#   statement_id  = "AllowHttpApiInvoke"
-#   action        = "lambda:InvokeFunction"
-#   function_name = aws_lambda_function.upload_data_lambda.function_name
-#   principal     = "apigateway.amazonaws.com"
-#   source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*"
-# }
 
 
 /// OPTIMIZATION LAMBDA
@@ -637,41 +438,136 @@ resource "aws_lambda_permission" "optimization_lambda_permission" {
   source_arn = "${aws_api_gateway_rest_api.api_gateway.execution_arn}/*/*/*"
 }
 
-# resource "aws_apigatewayv2_integration" "send_lambda_integration" {
-#   for_each = {
-#     "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
-#     "us-east-1b" = element(module.vpc.private_subnets, 1)
-#   }
+resource "aws_api_gateway_resource" "modify_lambda_resource" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  parent_id   = aws_api_gateway_rest_api.api_gateway.root_resource_id
+  path_part   = "modify"
+}
 
-#   api_id           = aws_apigatewayv2_api.http_api.id
-#   integration_type = "AWS_PROXY"
-#   integration_uri  = aws_lambda_function.optimization_lambda[each.key].invoke_arn
-#   payload_format_version = "2.0"
-# }
+resource "aws_api_gateway_method" "modify_lambda_method" {
+  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
+  resource_id   = aws_api_gateway_resource.modify_lambda_resource.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
 
-# resource "aws_apigatewayv2_route" "send_route" {
-#   for_each = {
-#     "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
-#     "us-east-1b" = element(module.vpc.private_subnets, 1)
-#   }
+resource "aws_api_gateway_method" "modify_lambda_options_method" {
+  rest_api_id   = aws_api_gateway_rest_api.api_gateway.id
+  resource_id   = aws_api_gateway_resource.modify_lambda_resource.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
 
-#   api_id    = aws_apigatewayv2_api.http_api.id
-#   route_key = "POST /send"
-#   target    = "integrations/${aws_apigatewayv2_integration.send_lambda_integration[each.key].id}"
-# }
+resource "aws_api_gateway_integration" "modify_lambda_integration" {
+  for_each = {
+    "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
+    "us-east-1b" = element(module.vpc.private_subnets, 1)
+  }
 
-# resource "aws_lambda_permission" "optimization_lambda_permission" {
-#   for_each = {
-#     "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
-#     "us-east-1b" = element(module.vpc.private_subnets, 1)
-#   }
+  rest_api_id             = aws_api_gateway_rest_api.api_gateway.id
+  resource_id             = aws_api_gateway_resource.modify_lambda_resource.id
+  http_method             = aws_api_gateway_method.modify_lambda_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.modify_lambda[each.key].invoke_arn
 
-#   statement_id  = "AllowHttpApiInvoke"
-#   action        = "lambda:InvokeFunction"
-#   function_name = aws_lambda_function.optimization_lambda[each.key].function_name
-#   principal     = "apigateway.amazonaws.com"
-#   source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*"
-# }
+  depends_on = [aws_lambda_permission.modify_lambda_permission]
+}
+
+resource "aws_api_gateway_integration" "modify_lambda_cors_integration" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  resource_id = aws_api_gateway_resource.modify_lambda_resource.id
+  http_method = aws_api_gateway_method.modify_lambda_options_method.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "modify_lambda_post_response" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  resource_id = aws_api_gateway_resource.modify_lambda_resource.id
+  http_method = aws_api_gateway_method.modify_lambda_method.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"      = true
+    "method.response.header.Access-Control-Allow-Headers"     = true
+    "method.response.header.Access-Control-Allow-Methods"     = true
+    "method.response.header.Access-Control-Allow-Credentials" = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_method_response" "modify_lambda_cors_method_response" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  resource_id = aws_api_gateway_resource.modify_lambda_resource.id
+  http_method = aws_api_gateway_method.modify_lambda_options_method.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+    "method.response.header.Access-Control-Allow-Credentials" = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "modify_lambda_post_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  resource_id = aws_api_gateway_resource.modify_lambda_resource.id
+  http_method = aws_api_gateway_method.modify_lambda_method.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"      = "'http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com'"
+    "method.response.header.Access-Control-Allow-Headers"     = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods"     = "'OPTIONS,POST'"
+    "method.response.header.Access-Control-Allow-Credentials" = "'true'"
+  }
+
+  depends_on = [
+    aws_api_gateway_integration.modify_lambda_integration
+  ]
+}
+
+resource "aws_api_gateway_integration_response" "modify_lambda_cors_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.api_gateway.id
+  resource_id = aws_api_gateway_resource.modify_lambda_resource.id
+  http_method = aws_api_gateway_method.modify_lambda_options_method.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers"     = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods"     = "'OPTIONS,POST'"
+    "method.response.header.Access-Control-Allow-Origin"      = "'http://${var.bucket_name}.s3-website-us-east-1.amazonaws.com'"
+    "method.response.header.Access-Control-Allow-Credentials" = "'true'"
+  }
+
+  depends_on = [
+    aws_api_gateway_method_response.modify_lambda_cors_method_response,
+    aws_api_gateway_integration.modify_lambda_cors_integration,
+    aws_api_gateway_method.modify_lambda_options_method
+  ]
+}
+
+resource "aws_lambda_permission" "modify_lambda_permission" {
+  for_each = {
+    "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea una Lambda para la private-subnet de cada AZ (las que tienen VPC Endpoint)
+    "us-east-1b" = element(module.vpc.private_subnets, 1)
+  }
+
+  statement_id  = "AllowSendInvocation"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.modify_lambda[each.key].function_name
+  principal     = "apigateway.amazonaws.com"
+
+  source_arn = "${aws_api_gateway_rest_api.api_gateway.execution_arn}/*/*/*"
+}
 
 /// GENERAL
 resource "aws_api_gateway_deployment" "api_gateway_deployment" {
@@ -683,7 +579,10 @@ resource "aws_api_gateway_deployment" "api_gateway_deployment" {
     aws_api_gateway_integration_response.cors_integration_response_upload,
     aws_api_gateway_integration.optimization_lambda_integration,
     aws_api_gateway_integration.optimization_lambda_cors_integration,
-    aws_api_gateway_integration_response.optimization_lambda_cors_integration_response
+    aws_api_gateway_integration_response.optimization_lambda_cors_integration_response,
+    aws_api_gateway_integration.modify_lambda_integration,
+    aws_api_gateway_integration.modify_lambda_cors_integration,
+    aws_api_gateway_integration_response.modify_lambda_cors_integration_response
   ]
 
   rest_api_id = aws_api_gateway_rest_api.api_gateway.id
@@ -700,17 +599,6 @@ output "api_gateway_url" {
 ########       VPC ENDPOINT       ########
    ####################################
 
-# resource "aws_vpc_endpoint" "ssm_endpoint" {
-#   for_each = {
-#     "us-east-1a" = element(module.vpc.private_subnets, 0) # Se crea un VPC endpoint para la private-subnet de cada AZ
-#     "us-east-1b" = element(module.vpc.private_subnets, 1)
-#   }
-  
-#   vpc_id            = module.vpc.vpc_id
-#   service_name      = "com.amazonaws.us-east-1.ssm"
-#   vpc_endpoint_type = "Interface"
-#   subnet_ids        = [each.value]
-# }
 
 resource "aws_vpc_endpoint" "dynamodb_endpoint" {
   vpc_id            = module.vpc.vpc_id
@@ -875,93 +763,9 @@ resource "aws_api_gateway_authorizer" "cognito_authorizer" {
   provider_arns    = [aws_cognito_user_pool.user_pool.arn]
 }
 
-# resource "aws_iam_policy" "secrets_ssm_access_policy" {
-#   name        = "secrets_ssm_access_policy"
-#   description = "Permite acceso a Secrets Manager y Parameter Store para el frontend"
-
-#   policy = jsonencode({
-#     "Version": "2012-10-17",
-#     "Statement": [
-#       {
-#         "Effect": "Allow",
-#         "Action": [
-#           "secretsmanager:GetSecretValue",
-#           "ssm:GetParameter"
-#         ],
-#         "Resource": [
-#           "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:myapp/secrets",
-#           "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/myapp/domain"
-#         ]
-#       }
-#     ]
-#   })
-# }
-
-# resource "aws_iam_role_policy_attachment" "attach_secrets_ssm_policy" {
-#   role       = aws_iam_role.frontend_role.name
-#   policy_arn = aws_iam_policy.secrets_ssm_access_policy.arn
-# }
-
-# resource "aws_iam_policy" "dynamodb_access" {
-#   name        = "DynamoDBAccess"
-#   description = "Política para acceder a DynamoDB"
-
-#   policy = jsonencode({
-#     Version = "2012-10-17"
-#     Statement = [
-#       {
-#         Effect = "Allow"
-#         Action = [
-#           "dynamodb:PutItem",
-#           "dynamodb:GetItem",
-#           "dynamodb:UpdateItem",
-#           "dynamodb:DeleteItem",
-#           "dynamodb:Scan",
-#           "dynamodb:Query"
-#         ]
-#         Resource = "*"
-#       }
-#     ]
-#   })
-# }
-
-# resource "aws_iam_role_policy_attachment" "attach_dynamodb_access_to_admin_group" {
-#   policy_arn = aws_iam_policy.dynamodb_access.arn
-#   role       = aws_cognito_user_group.admin_group.id
-# }
-
 
 
 # ESTO CREA LOS DOS GRUPOS DE USUARIOS DE COGNITO (REGULARES Y ADMINISTRADORES). FALTA DARLE ACCESO A LA DB Y A LA CARGA DE DATOS SOLO A LOS ADMINISTRADORES.
-
-   ####################################
-########          DATA S3         ########
-   ####################################
-
-# resource "aws_s3_bucket" "csv_bucket" {
-#   bucket = var.csv_bucket_name
-
-#   tags = {
-#     Name = var.csv_bucket_name
-#     Environment = "dev"
-#   }
-# }
-
-# # Opcional: Habilitar la versión del archivo para el control de versiones (opcional)
-# resource "aws_s3_bucket_versioning" "csv_bucket_versioning" {
-#   bucket = aws_s3_bucket.csv_bucket.bucket
-
-#   versioning_configuration {
-#     status = "Enabled"
-#   }
-# }
-
-# resource "aws_s3_object" "csv_file" {
-#   bucket = aws_s3_bucket.csv_bucket.bucket
-#   key    = "componentes_final.csv"
-#   source = "./data/componentes_final.csv"
-# }
-
 
    ####################################
 ########        FRONTEND S3       ########
@@ -1099,8 +903,8 @@ resource "aws_dynamodb_table" "csv_data_table" {
   }
 
   attribute {
-    name = "precio"
-    type = "N"
+    name = "precio_ficticio"
+    type = "S"
   }
 
   # Definimos la clave primaria
@@ -1108,8 +912,8 @@ resource "aws_dynamodb_table" "csv_data_table" {
   range_key = "productId"
 
   local_secondary_index {
-    name            = "PriceIndex"
-    range_key       = "precio"
+    name            = "precio-index"
+    range_key       = "precio_ficticio"
     projection_type = "ALL"
   }
 
@@ -1209,7 +1013,7 @@ resource "aws_s3_bucket_public_access_block" "csv_bucket_block" {
 
 resource "aws_s3_object" "csv_upload" {
   bucket = aws_s3_bucket.csv_bucket.bucket
-  key    = "componentes_optimizados.csv"
+  key    = "import/componentes_optimizados.csv"
   source = "./data/componentes_optimizados.csv"
   acl    = "private"
 }
@@ -1245,9 +1049,6 @@ resource "aws_s3_bucket_notification" "s3_notification" {
     aws_lambda_permission.allow_s3_invoke
   ]
 }
-
-
-
 
    ###############################
 ########    ARCHIVO LOCAL    ########

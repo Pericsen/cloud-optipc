@@ -1,0 +1,15 @@
+{
+    "Records": [
+      {
+        "s3": {
+          "bucket": {
+            "name": "optipc-csv-storage-nic"
+          },
+          "object": {
+            "key": "import/componentes_optimizados.csv"
+          }
+        }
+      }
+    ]
+  }
+  
