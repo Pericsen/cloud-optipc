@@ -1209,7 +1209,7 @@ resource "aws_s3_bucket_public_access_block" "csv_bucket_block" {
 
 resource "aws_s3_object" "csv_upload" {
   bucket = aws_s3_bucket.csv_bucket.bucket
-  key    = "import/componentes_optimizados.csv"
+  key    = "componentes_optimizados.csv"
   source = "./data/componentes_optimizados.csv"
   acl    = "private"
 }
@@ -1227,7 +1227,6 @@ resource "aws_lambda_permission" "allow_s3_invoke" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.csv_to_dynamodb.function_name
   principal     = "s3.amazonaws.com"
-
   source_arn = aws_s3_bucket.csv_bucket.arn
 }
 
