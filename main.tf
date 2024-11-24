@@ -995,14 +995,13 @@ resource "aws_s3_bucket_policy" "csv_bucket_policy" {
         ],
         Condition = {
           Bool = {
-            "aws:SecureTransport": false
+            "aws:SecureTransport": "false"
           }
         }
       }
     ]
   })
 }
-
 resource "aws_s3_bucket_public_access_block" "csv_bucket_block" {
   bucket                  = aws_s3_bucket.csv_bucket.id
   block_public_acls       = true
@@ -1071,8 +1070,9 @@ resource "local_file" "config_file" {
 resource "aws_s3_object" "config_file" {
   bucket = aws_s3_bucket.frontend_bucket.bucket
   key    = "config.json"
-  source = "./front/config.json"
+  source = local_file.config_file.filename
   content_type = "application/json"
+  depends_on = [local_file.config_file]
 }
 
 output "identity_pool_id" {

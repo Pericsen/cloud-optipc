@@ -3,7 +3,7 @@
       {
         "s3": {
           "bucket": {
-            "name": "optipc-csv-storage-nic"
+            "name": "optipc-csv-storage-ger"
           },
           "object": {
             "key": "import/componentes_optimizados.csv"
@@ -12,4 +12,3 @@
       }
     ]
   }
-  
