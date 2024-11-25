@@ -8,7 +8,12 @@ variable "bucket_name" {
   description = "Nombre del Bucket del Front"
 }
 
-variable "csv_bucket_name" {
-  type = string
-  description = "Nombre del Bucket del CSV"
+variable "topic_name" {
+  description = "El nombre del topic SNS"
+  type        = string
+}
+
+variable "subscribers" {
+  description = "Lista de emails que se suscriben al topic"
+  type        = list(string)
 }

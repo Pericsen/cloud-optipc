@@ -1,3 +1,7 @@
-domain      = "optipc-nic"
-bucket_name = "optipc-front-storage-nic"
-csv_bucket_name = "optipc-csv-storage-nic"
+domain      = "optipc-tom"
+bucket_name = "optipc-front-storage-tom"
+
+
+# SNS
+topic_name = "upload_notifcation"
+subscribers = ["nperic@itba.edu.ar","todriozola@itba.edu.ar","glorenzani@itba.edu.ar"]
