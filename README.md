@@ -1,7 +1,6 @@
 # cloud-optipc
 
 ## Cloud Computing Grupo 3
-### Repositorio correspondiente al Grupo 3
 ### Integrantes:
 - Tomás Odriozola 62853
 - Germán Lorenzani 60250
