@@ -33,7 +33,8 @@ Con respecto al inicio de sesión, en la esquina superior derecha se encuentra u
 Al inciar sesión como usuario administrador, además del botón de visualización del perfil con su nombre de usuario y mail, también visualizará un ícono de una nube. Este ícono representa la funcionalidad de carga de datos directa hacia la base de datos alojada en DynamoDB. Esta función se encuentra únicamente disponible al iniciar sesión como usuario administrador. Para hacer esto, debe ingresar las credenciales asociadas a uno de los usuarios Admin creados en el apply de la arquitectura. Las credenciales de uno de ellos son:
 - Nombre de usuario: admin1@example.com
 - Contraseña: Admin@1234 
-La página solicitará un cambio de contraseña, en la que deberá ingresar una contraseña propia que se asociará automáticamente al usuario admin para luego iniciar sesión con dicha contraseña.
+
+Al iniciar sesión como administrador, la página le solicitará un cambio de contraseña. En ella, deberá ingresar una contraseña propia que se asociará automáticamente al usuario admin para luego iniciar sesión con dicha contraseña.
 
 Para probar la funcionalidad de carga de datos, una vez accionado el botón de la nube asociado a esta funcionalidad, se abre una ventana emergente con la opción de seleccionar del navegador un archivo de extensión .csv para subir a la base de datos. Para realizar la prueba, en el directorio './data', se reservó un archivo bajo el nombre "registro_para_subir.csv" que puede ser usado como ejemplo para probar esta mecánica. Luego, apretar el botón "Subir CSV".
 Una vez realizada la carga exitosa del csv, se sugiere comprobar la subida de los datos mediante el siguiente comando en la terminal:
