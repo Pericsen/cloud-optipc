@@ -1,5 +1,5 @@
-domain      = "optipc-tom"
-bucket_name = "optipc-front-storage-tom"
+domain      = "optipc-x"
+bucket_name = "optipc-front-storage-x"
 
 
 # SNS

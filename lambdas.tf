@@ -94,6 +94,8 @@ resource "aws_lambda_function" "optimization_lambda" {
   layers = [
     data.klayers_package_latest_version.pandas.arn
   ]
+
+  timeout = 300
 }
 
 // LAMBDA PARA EJECUTAR MODIFICAR COMPONENTES
@@ -122,6 +124,8 @@ resource "aws_lambda_function" "modify_lambda" {
   layers = [
     data.klayers_package_latest_version.pandas.arn
   ]
+
+  timeout = 300
 }
 
 
